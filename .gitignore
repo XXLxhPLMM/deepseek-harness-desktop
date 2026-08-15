@@ -2,6 +2,11 @@
 # 属运行时产物，不应提交
 nodejs/
 
+# 下载的压缩包 (node-v*.zip/tar.gz 等运行时产物)
+*.zip
+*.tar.gz
+*.tgz
+
 # 操作系统 / 编辑器
 .DS_Store
 Thumbs.db

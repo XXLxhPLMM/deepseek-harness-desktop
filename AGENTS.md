@@ -30,6 +30,7 @@
 ## 多语言（i18n）
 
 - 提示/日志按系统语言自动加载 `locales/<lang>.lang`，**检测不到或未知语言时默认中文（zh）**。
+- **环境变量 `SETUP_LANG` 可覆盖系统检测**（测试/强制语言用），优先级最高。cmd 里 PowerShell 检测命令中的 `if`/`elseif` 关键字后必须留空格。
 - 语言检测（三脚本一致，统一转小写再前缀匹配）：
   - Windows 读 `InstalledUICulture`（如 `zh-CN`）——**不要用 `CurrentUICulture`**：在 `chcp 65001` 下会错误回退为 `en-US`（cmd 的 `chcp 65001` 也会持久改控制台代码页）。
   - macOS/Linux 读 `$LANG`/`LC_ALL`。
@@ -41,6 +42,8 @@
   - 动态内容用 `{1}`、`{2}` 占位符，按传入顺序替换。
 - 新增语言：在 `locales/` 加一个 `<code>.lang`（UTF-8 **无 BOM**，`KEY=message` 每行一个，`#` 开头为注释），并同步在三脚本的 `detect_lang` 里加前缀匹配。
 - **`setup-node.cmd` 源码注释必须保持纯 ASCII**：cmd 会在 `chcp 65001` 生效前解析文件，含中文的多字节注释会导致解析错乱。
+- **cmd 语言检测不能用 `for /f … (`命令`)` 捕获 PowerShell 输出**：`chcp 65001` 下会读错输出；应让 PowerShell 写临时文件再用 `set /p` 读取。
+- **cmd 里禁止出现 `if(`**（`if` 直接紧跟左括号，即使位于双引号 PowerShell 字符串内）：cmd 会误判为块开始，破坏后续 `goto`/`call` 的 label 定位，导致 `:msg` 返回地址错乱、help 输出异常。必须写 `if (`。
 - **cmd 语言检测不能用 `for /f … (`命令`)` 捕获 PowerShell 输出**：`chcp 65001` 下会读错输出；应让 PowerShell 写临时文件再用 `set /p` 读取。
 
 ## 调试模式（`--debug` / `-Debug`）

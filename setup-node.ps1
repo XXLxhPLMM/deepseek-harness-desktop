@@ -35,9 +35,14 @@ $Script:ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 # ---------- 语言检测 (决定提示/日志语言: zh/zh-TW/en/ja/ko/fr/de/es, 检测不到默认中文) ----------
 # 用 InstalledUICulture (系统安装的 UI 语言, 不受 chcp 影响; CurrentUICulture 在
-# chcp 65001 下会错误回退为 en-US)。统一转小写再匹配; zh-TW/HK/MO -> 繁体(台湾)包
+# chcp 65001 下会错误回退为 en-US)。统一转小写再匹配; zh-TW/HK/MO -> 繁体(台湾)包。
+# 环境变量 SETUP_LANG 优先, 用于测试/强制指定语言。
 $Script:Lang = "zh"
-$lc = [System.Globalization.CultureInfo]::InstalledUICulture.Name.ToLower()
+if ($env:SETUP_LANG) {
+    $lc = $env:SETUP_LANG.ToLower()
+} else {
+    $lc = [System.Globalization.CultureInfo]::InstalledUICulture.Name.ToLower()
+}
 if ($lc -match "^zh[-_]?(tw|hk|mo)") { $Script:Lang = "zh-TW" }
 elseif ($lc -match "^zh") { $Script:Lang = "zh" }
 elseif ($lc -match "^ja") { $Script:Lang = "ja" }

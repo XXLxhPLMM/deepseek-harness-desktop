@@ -34,7 +34,9 @@ DETECTED_LANG="zh"
 detect_lang() {
     local lc
     lc=""
-    if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; then
+    if [[ -n "${SETUP_LANG:-}" ]]; then
+        lc="$SETUP_LANG"  # 环境变量 SETUP_LANG 覆盖系统检测 (测试/强制语言用)
+    elif [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; then
         lc="$(powershell -NoProfile -Command '[System.Globalization.CultureInfo]::InstalledUICulture.Name' 2>/dev/null)"
     else
         lc="${LC_ALL:-${LANG:-}}"

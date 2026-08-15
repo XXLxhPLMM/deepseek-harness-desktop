@@ -21,6 +21,19 @@ rem       call :msg <key> <arg1> <arg2> -> result stored in !M!
 rem ============================================================================
 setlocal EnableExtensions EnableDelayedExpansion
 
+rem ---- language detection (load FIRST, default zh; zh-TW for Traditional) ----
+rem Runs before chcp: chcp 65001 makes CurrentUICulture fall back to en-US, so use
+rem InstalledUICulture (system UI language). SETUP_LANG env var overrides detection
+rem (for testing / forcing a language).
+rem NOTE: NEVER write "if(" (if directly followed by an open paren) anywhere in this
+rem file, even inside a quoted PowerShell string: cmd mis-parses it as a block open
+rem and corrupts goto/call label lookup later in the script. Always keep a space.
+set "LANG=zh"
+set "LANGTMP=%TEMP%\sn_lang.txt"
+powershell -NoProfile -Command "$c=if ($env:SETUP_LANG) {$env:SETUP_LANG.ToLower()} else {([System.Globalization.CultureInfo]::InstalledUICulture).Name.ToLower()}; if ($c -match '^zh[-_]?(tw|hk|mo)') {$r='zh-TW'} elseif ($c -match '^zh') {$r='zh'} elseif ($c -match '^ja') {$r='ja'} elseif ($c -match '^ko') {$r='ko'} elseif ($c -match '^fr') {$r='fr'} elseif ($c -match '^de') {$r='de'} elseif ($c -match '^es') {$r='es'} elseif ($c -match '^en') {$r='en'} else {$r='zh'}; [System.IO.File]::WriteAllText($env:LANGTMP, $r)" 2>nul
+if exist "%LANGTMP%" set /p LANG=<"%LANGTMP%"
+del /f /q "%LANGTMP%" >nul 2>nul
+
 set "SCRIPT_DIR=%~dp0"
 set "VERSION=v22.23.2"
 set "NVM_VERSION=22.23.2"
@@ -35,19 +48,7 @@ set "DRY_RUN=0"
 set "DEBUG_MODE=0"
 set "NO_PAUSE=0"
 
-rem ---- language detection (default zh if undetectable; zh-TW for Traditional) ----
-rem Use PowerShell once to keep logic identical to sh/ps1. Falls back to zh if PS absent.
-rem NOTE: do NOT use `for /f ... (`command`)` here - under chcp 65001 cmd misreads the
-rem command output (e.g. "zh" -> "en"). Capture to a temp file and read via set /p instead.
-set "LANG=zh"
-set "LANGTMP=%TEMP%\sn_lang.txt"
-powershell -NoProfile -Command "$c=[System.Globalization.CultureInfo]::InstalledUICulture.Name.ToLower(); if($c -match '^zh[-_]?(tw|hk|mo)'){$r='zh-TW'}elseif($c -match '^zh'){$r='zh'}elseif($c -match '^ja'){$r='ja'}elseif($c -match '^ko'){$r='ko'}elseif($c -match '^fr'){$r='fr'}elseif($c -match '^de'){$r='de'}elseif($c -match '^es'){$r='es'}elseif($c -match '^en'){$r='en'}else{$r='zh'}; [System.IO.File]::WriteAllText($env:LANGTMP, $r)" 2>nul
-if exist "%LANGTMP%" set /p LANG=<"%LANGTMP%"
-del /f /q "%LANGTMP%" >nul 2>nul
-
-rem ---- switch console to UTF-8 AFTER detection ----
-rem Use InstalledUICulture (system UI language) so detection is not affected by chcp;
-rem CurrentUICulture would wrongly fall back to en-US under chcp 65001.
+rem ---- switch console to UTF-8 (after language detection above) ----
 chcp 65001 >nul 2>nul
 
 rem ---- load language file into MSG_<key> ----
