@@ -190,7 +190,7 @@ detect_nvm() {
 # ---- 第 2 级: node (>= MIN_MAJOR) ----
 # 普通模式: 检测 PATH 上的 node。调试模式: 只检查脚本目录下的 INSTALL_DIR。
 detect_node() {
-    local version major
+    local version="" major=""
     if [[ "$DEBUG_MODE" -eq 1 ]]; then
         # 调试模式: 只检查脚本目录 (INSTALL_DIR 已被强制为 SCRIPT_DIR/nodejs)
         local bin_dir="$INSTALL_DIR"
@@ -247,7 +247,19 @@ detect_platform() {
     case "$(uname -s)" in
         Darwin) os=darwin ;;
         Linux)  os=linux ;;
-        MINGW*|MSYS*|CYGWIN*) os=win ;;
+        MINGW*|MSYS*|CYGWIN*)
+            os=win
+            # 32 位 git-bash 的 uname -m 会误报 i686/386, 用 PowerShell 查真实
+            # 系统架构 (Is64BitOperatingSystem + PROCESSOR_ARCHITEW6432)
+            local ps_arch
+            ps_arch="$(powershell -NoProfile -Command "
+                if (-not [Environment]::Is64BitOperatingSystem) { Write-Output 'x86'; exit }
+                \$a = if (\$env:PROCESSOR_ARCHITEW6432) { \$env:PROCESSOR_ARCHITEW6432 } else { \$env:PROCESSOR_ARCHITECTURE }
+                if (\$a -eq 'ARM64') { Write-Output 'arm64' } else { Write-Output 'x64' }" 2>/dev/null)"
+            arch="${ps_arch:-x64}"
+            echo "$os $arch"
+            return 0
+            ;;
         *) fail "$(msg os_unsupported "$(uname -s)")"; return 1 ;;  # 提示: 不支持的操作系统: <name>
     esac
 

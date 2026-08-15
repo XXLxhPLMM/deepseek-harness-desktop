@@ -84,7 +84,10 @@ rem ============================================================================
 call :msg sh_title
 echo [INFO] !M!
 
-rem ---- 1) run setup to prepare the toolchain ----
+rem ---- 1) ensure dsh is available: skip setup when dsh already ready ----
+call :check_dsh
+if not errorlevel 1 goto :dsh_ok
+
 call :msg sh_setup_run
 echo [INFO] !M!
 if "%DEBUG_MODE%"=="1" (
@@ -98,6 +101,7 @@ if errorlevel 1 (
     set "EXIT_CODE=1"
     goto :finish
 )
+:dsh_ok
 
 rem ---- 2) resolve service port: --port > task config > DSH_PORT > default ----
 if "%CLI_PORT%"=="" call :get_task_port
@@ -165,6 +169,24 @@ set "M=!M:{2}=%~3!"
 :msg_ret
 exit /b 0
 exit /b 0
+
+rem ---- dsh ready? errorlevel 0=yes (skip setup), 1=no (need setup) ----
+rem Normal mode checks PATH; debug mode only accepts the script-dir node global.
+:check_dsh
+if "%DEBUG_MODE%"=="1" (
+    if exist "%SCRIPT_DIR%nodejs\dsh.cmd" (
+        call :msg sh_dsh_ok
+        echo [OK]    !M!
+        exit /b 0
+    )
+    exit /b 1
+)
+where dsh >nul 2>nul
+if not errorlevel 1 (
+    call :msg sh_dsh_ok
+    echo [OK]    !M!
+)
+exit /b
 
 rem ---- read the --port value from the dsh-web task config (empty if none) ----
 :get_task_port

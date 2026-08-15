@@ -121,8 +121,25 @@ done
 
 is_mingw() { [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; }
 
-# ---------- 1) 运行 setup 确保工具链就绪 (node + 淘宝镜像 + nrm + dsh) ----------
+# ---------- 1) 检测 dsh 是否已就绪; 未就绪才跑 setup ----------
+# 普通模式检查 PATH; 调试模式只认脚本目录 node 的全局 dsh。
+dsh_ready() {
+    if [[ "$DEBUG_MODE" -eq 1 ]]; then
+        if is_mingw; then
+            [[ -x "$SCRIPT_DIR/nodejs/dsh" ]]
+        else
+            [[ -x "$SCRIPT_DIR/nodejs/bin/dsh" ]]
+        fi
+        return
+    fi
+    command -v dsh >/dev/null 2>&1
+}
+
 ensure_toolchain() {
+    if dsh_ready; then
+        ok "$(msg sh_dsh_ok)"
+        return 0
+    fi
     info "$(msg sh_setup_run)"
     if [[ "$DEBUG_MODE" -eq 1 ]]; then
         bash "$SCRIPT_DIR/setup.sh" --debug || { fail "$(msg sh_setup_fail)"; exit 1; }

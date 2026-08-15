@@ -201,7 +201,8 @@ if "%DRY_RUN%"=="1" (
     call :msg dryrun_skip
     echo [INFO] !M!
     exit /b 1
-)set "NODE_DONE=0"
+)
+set "NODE_DONE=0"
 if "%DEBUG_MODE%"=="1" (
     call :msg debug_skip_nvm
     echo [INFO] !M!
@@ -311,10 +312,16 @@ if errorlevel 1 (
 exit /b 0
 
 rem ---- detect platform arch ----
+rem In a 32-bit cmd, PROCESSOR_ARCHITECTURE wrongly reports x86 on a 64-bit
+rem system; PROCESSOR_ARCHITEW6432 then carries the real architecture, prefer it.
 :detect_arch
 set "NODE_ARCH=x64"
-if /i "%PROCESSOR_ARCHITECTURE%"=="ARM64" set "NODE_ARCH=arm64"
-if /i "%PROCESSOR_ARCHITECTURE%"=="x86" set "NODE_ARCH=x86"
+if defined PROCESSOR_ARCHITEW6432 (
+    if /i "%PROCESSOR_ARCHITEW6432%"=="ARM64" set "NODE_ARCH=arm64"
+) else (
+    if /i "%PROCESSOR_ARCHITECTURE%"=="ARM64" set "NODE_ARCH=arm64"
+    if /i "%PROCESSOR_ARCHITECTURE%"=="x86" set "NODE_ARCH=x86"
+)
 exit /b 0
 
 rem ---- download zip then extract to INSTALL_DIR ----
@@ -436,7 +443,9 @@ call :msg dsh_not_found
 echo [INFO] !M!
 call :msg dsh_install
 echo [INFO] !M!
-npm install -g "%DSH_PKG%"
+rem run npm in a child cmd: npm.cmd's internal goto would corrupt the parent
+rem batch's label tracking when invoked from a call :label subroutine
+cmd /c npm install -g "%DSH_PKG%"
 if errorlevel 1 goto :dsh_fail
 rem refresh PATH if npm global dir is not on it yet
 set "DSH_FOUND="
@@ -504,7 +513,7 @@ if "%DEBUG_MODE%"=="1" (
         call :msg registry_already "!CUR_REG!"
         echo [OK]    !M!
     ) else (
-        npm config set registry "%NPM_REGISTRY%" >nul 2>nul
+        cmd /c npm config set registry "%NPM_REGISTRY%" >nul 2>nul
         if errorlevel 1 (
             call :msg registry_fail "%NPM_REGISTRY%"
             echo [WARN] !M!
@@ -523,7 +532,7 @@ if not errorlevel 1 (
 )
 call :msg nrm_install
 echo [INFO] !M!
-npm install -g "%NRM_PKG%" >nul 2>nul
+cmd /c npm install -g "%NRM_PKG%" >nul 2>nul
 if errorlevel 1 (
     call :msg nrm_fail "%NRM_PKG%"
     echo [WARN] !M!

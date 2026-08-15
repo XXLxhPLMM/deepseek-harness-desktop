@@ -107,8 +107,20 @@ function Show-Usage {
 
 if ($ArgHelp) { Show-Usage }
 
-# ---------- 1) 运行 setup 确保工具链就绪 (node + 淘宝镜像 + nrm + dsh) ----------
+# ---------- 1) 检测 dsh 是否已就绪; 未就绪才跑 setup ----------
+# 普通模式检查 PATH; 调试模式只认脚本目录 node 的全局 dsh。
+function Test-DshReady {
+    if ($ArgDebug) {
+        return (Test-Path (Join-Path $Script:ScriptDir "nodejs\dsh.cmd"))
+    }
+    return [bool](Get-Command dsh -ErrorAction SilentlyContinue)
+}
+
 function Ensure-Toolchain {
+    if (Test-DshReady) {
+        Write-Ok (msg sh_dsh_ok)
+        return
+    }
     Write-Info (msg sh_setup_run)
     if ($ArgDebug) {
         & (Join-Path $Script:ScriptDir "setup.ps1") -Debug

@@ -49,13 +49,15 @@ bash start.sh
 >
 > ```bat
 > rem Windows（管理员权限）
-> server\server-service.cmd install
+> server\install-server-service.cmd
 > ```
 >
 > ```bash
 > # macOS / Linux（sudo）
-> sudo bash server/server-service.sh install
+> sudo bash server/install-server-service.sh
 > ```
+>
+> 也可以用 PowerShell：`powershell -ExecutionPolicy Bypass -File server\install-server-service.ps1`。
 >
 > 若服务尚未安装，`start.cmd` / `start.ps1` / `start.sh` 只能检测/尝试启动，会提示服务未安装，需先执行上面的 install。
 
@@ -65,7 +67,7 @@ bash start.sh
 
 ### 1. 启动器（入口）—— `start.cmd` / `start.ps1` / `start.sh`
 
-日常使用只用这一个。自动完成：运行 setup → 检测/启动 dsh 服务 → 用 webview 打开桌面窗口。
+日常使用只用这一个。自动完成：检测工具链（**dsh 已就绪则直接跳过 setup**）→ 检测/启动 dsh 服务 → 用 webview 打开桌面窗口。
 
 | 参数（cmd） | 参数（ps1） | 参数（sh） | 说明 |
 | --- | --- | --- | --- |
@@ -125,11 +127,16 @@ bash setup.sh --debug          # 隔离验证安装
 | `status` | 查看服务状态 |
 
 服务以 SYSTEM / root 账户运行，`homedir()` 与桌面用户不同，会看不到手动启动时产生的会话。因此注册命令会为服务显式设置 `DSH_HOME=<用户 home>\.dsh`（dsh 官方支持的最高优先级数据根覆盖），让服务与手动启动**共享同一份会话数据**。
+
+wrapper 直接透传参数：
+
+| 参数 | 说明 |
+| --- | --- |
 | `--port <端口>` | 指定端口（默认 3080） |
 | `--host <地址>` | 指定绑定地址（默认 127.0.0.1） |
 | `--debug` | 使用脚本目录下的 nodejs/dsh |
 
-wrapper 直接透传参数，例如：
+例如：
 
 ```bat
 install-server-service.cmd --port 8080

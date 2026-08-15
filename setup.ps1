@@ -232,12 +232,12 @@ function Install-Node-With-Nvm {
 
 # ---------- 从官方下载并解压 ----------
 function Install-Node-Direct {
-    $arch = switch ($env:PROCESSOR_ARCHITECTURE) {
-        "AMD64" { "x64" }
-        "ARM64" { "arm64" }
-        "x86"   { "x86" }
-        default { "x64" }
-    }
+    # 32 位 PowerShell 里 $env:PROCESSOR_ARCHITECTURE 会误报 x86 (系统可能
+    # 是 64 位); 用 Is64BitOperatingSystem + PROCESSOR_ARCHITEW6432 判断真实架构。
+    $arch = if ([Environment]::Is64BitOperatingSystem) {
+        $a = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
+        if ($a -eq "ARM64") { "arm64" } else { "x64" }
+    } else { "x86" }
     # 提示: 平台: win / <arch>
     Write-Info (msg platform "win" $arch)
 
