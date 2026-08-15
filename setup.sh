@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
 # setup.sh
-# 检测/安装整条工具链: nvm → node → dsh。逐级检查, 拒绝重复安装。
+# 检测/安装整条工具链: nvm → node → npm 淘宝镜像 + nrm → dsh。逐级检查, 拒绝重复安装。
 # 只做一件事: 检测当前环境缺什么, 补装什么。
 #
 # 用法:
-#   ./setup.sh                       # 检测/安装 nvm → node → dsh
+#   ./setup.sh                       # 检测/安装 nvm → node → dsh (含 npm 淘宝镜像 + nrm)
 #   ./setup.sh --dir /path           # 指定 node 安装目录 (默认: 脚本目录下的 nodejs)
 #   ./setup.sh --no-env              # 不修改环境变量(PATH)
 #   ./setup.sh --dry-run             # 只检测, 不安装
@@ -26,6 +26,8 @@ BASE_URL="https://nodejs.org/dist"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="${NODE_INSTALL_DIR:-$SCRIPT_DIR/nodejs}"
 DSH_PKG="@deepseek-ai/dsh"
+NPM_REGISTRY="https://registry.npmmirror.com"   # 淘宝 npm 镜像
+NRM_PKG="nrm"
 DO_ENV=1
 DRY_RUN=0
 DEBUG_MODE=0
@@ -289,6 +291,69 @@ install_node() {
     fi
 }
 
+# ---- 第 2.5 级: npm 淘宝镜像 + nrm 全局安装 (需 node/npm 就绪) ----
+# 普通模式: 写用户 npm 配置 + 全局安装 nrm。调试模式: 会话级隔离, 不碰用户配置。
+# nrm 安装失败不致命 (警告即可), 不影响核心工具链。
+ensure_npm_mirror() {
+    # 确保当前会话 npm 可用 (直接下载安装 node 后 PATH 尚未更新)
+    if ! command -v npm >/dev/null 2>&1; then
+        local npm_cand="$INSTALL_DIR"
+        if ! is_mingw; then npm_cand="$INSTALL_DIR/bin"; fi
+        if [[ -x "$npm_cand/npm" || -x "$npm_cand/npm.cmd" ]]; then
+            export PATH="$npm_cand:$PATH"
+        fi
+    fi
+    # 调试模式: 用会话级环境变量设置源, 不写用户 ~/.npmrc
+    if [[ "$DEBUG_MODE" -eq 1 ]]; then
+        export npm_config_registry="$NPM_REGISTRY"
+    fi
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        if command -v nrm >/dev/null 2>&1; then ok "$(msg nrm_ok)"; else info "$(msg dryrun_skip)"; fi
+        local cur
+        cur="$(npm config get registry 2>/dev/null || true)"
+        if [[ "$cur" == *npmmirror* ]]; then ok "$(msg registry_already "$cur")"; else info "$(msg dryrun_skip)"; fi
+        return 0
+    fi
+
+    if [[ "$DEBUG_MODE" -eq 1 ]]; then
+        ok "$(msg registry_set "$NPM_REGISTRY")"
+    else
+        local cur
+        cur="$(npm config get registry 2>/dev/null || true)"
+        if [[ "$cur" == *npmmirror* ]]; then
+            ok "$(msg registry_already "$cur")"
+        else
+            if npm config set registry "$NPM_REGISTRY" 2>/dev/null; then
+                ok "$(msg registry_set "$NPM_REGISTRY")"
+            else
+                warn "$(msg registry_fail "$NPM_REGISTRY")"
+            fi
+        fi
+    fi
+
+    if command -v nrm >/dev/null 2>&1; then
+        ok "$(msg nrm_ok)"
+        return 0
+    fi
+    if [[ "$DEBUG_MODE" -eq 1 ]]; then
+        info "$(msg nrm_install_local)"
+        if npm install -g --prefix "$SCRIPT_DIR" "$NRM_PKG" >/dev/null 2>&1; then
+            ok "$(msg nrm_done)"
+        else
+            warn "$(msg nrm_fail "$NRM_PKG")"
+        fi
+    else
+        info "$(msg nrm_install)"
+        if npm install -g "$NRM_PKG" >/dev/null 2>&1; then
+            ok "$(msg nrm_done)"
+        else
+            warn "$(msg nrm_fail "$NRM_PKG")"
+        fi
+    fi
+    return 0
+}
+
 # ---- 第 3 级: dsh (全局安装 @deepseek-ai/dsh) ----
 # 普通模式: 检测 PATH 上的 dsh。调试模式: 只检查脚本目录。
 detect_dsh() {
@@ -501,6 +566,9 @@ main() {
         fi
         NODE_INSTALLED=1
     fi
+
+    # ---- 第 2.5 级: npm 淘宝镜像 + nrm 全局安装 (需 node 就绪) ----
+    ensure_npm_mirror
 
     # ---- 第 3 级: dsh (已就绪则跳过, 拒绝重复安装) ----
     if detect_dsh; then

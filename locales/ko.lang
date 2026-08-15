@@ -59,6 +59,16 @@ dsh_install_local=디버그: dsh 를 스크립트 폴더에 설치...
 dsh_done=dsh 전역 설치 완료
 dsh_fail=dsh 설치 실패: {1}
 
+# --- setup: npm 타오바오 미러 + nrm 전역 설치 (setup.{sh,ps1,cmd}) ---
+nrm_install=nrm 이 감지되지 않았습니다. 전역으로 설치 중 ...
+nrm_ok=nrm 감지됨
+nrm_done=nrm 전역 설치 완료
+nrm_fail=nrm 설치 실패: {1}
+nrm_install_local=디버그 모드: 스크립트 디렉토리에 nrm 설치 중...
+registry_set=npm 레지스트리를 타오바오 미러로 전환했습니다: {1}
+registry_already=npm 레지스트리가 이미 타오바오 미러입니다: {1}
+registry_fail=npm 레지스트리 설정 실패: {1}
+
 # --- start-harness.{sh,ps1,cmd} 공유 키 (접두사 sh_) ---
 sh_usage=사용법: {1} [옵션]
 sh_usage_debug=  --debug        디버그: 스크립트 폴더의 nodejs 사용

@@ -59,6 +59,16 @@ dsh_install_local=デバッグ: dsh をスクリプト配下にインストー�
 dsh_done=dsh をグローバルにインストールしました
 dsh_fail=dsh のインストールに失敗: {1}
 
+# --- setup: npm 淘宝ミラー + nrm グローバルインストール (setup.{sh,ps1,cmd}) ---
+nrm_install=nrm が見つかりません。グローバルにインストール中 ...
+nrm_ok=nrm を検出
+nrm_done=nrm をグローバルにインストールしました
+nrm_fail=nrm のインストールに失敗: {1}
+nrm_install_local=デバッグモード: スクリプトディレクトリに nrm をインストール中...
+registry_set=npm レジストリを淘宝ミラーに切り替えました: {1}
+registry_already=npm レジストリは既に淘宝ミラーです: {1}
+registry_fail=npm レジストリの設定に失敗: {1}
+
 # --- start-harness.{sh,ps1,cmd} 共有キー (接頭辞 sh_) ---
 sh_usage=使用方法: {1} [オプション]
 sh_usage_debug=  --debug        デバッグ: スクリプト配下の nodejs を使用

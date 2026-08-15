@@ -59,6 +59,16 @@ dsh_install_local=Debug-Modus: dsh ins Skriptverzeichnis installieren...
 dsh_done=dsh global installiert
 dsh_fail=dsh-Installation fehlgeschlagen: {1}
 
+# --- setup: npm-Taobao-Spiegel + globales nrm (setup.{sh,ps1,cmd}) ---
+nrm_install=nrm nicht gefunden, installiere global ...
+nrm_ok=nrm erkannt
+nrm_done=nrm global installiert
+nrm_fail=nrm-Installation fehlgeschlagen: {1}
+nrm_install_local=Debug-Modus: nrm in das Skriptverzeichnis installieren...
+registry_set=npm-Registry auf Taobao-Spiegel umgestellt: {1}
+registry_already=npm-Registry ist bereits der Taobao-Spiegel: {1}
+registry_fail=Fehler beim Setzen der npm-Registry: {1}
+
 # --- gemeinsame Schlüssel für start-harness.{sh,ps1,cmd} (Präfix sh_) ---
 sh_usage=Verwendung: {1} [Optionen]
 sh_usage_debug=  --debug        Debug: nodejs im Skriptordner verwenden

@@ -1,9 +1,9 @@
 ﻿# server-service.ps1
-# 把 deepseek harness 的 `dsh web` 安装/管理为 Windows 系统服务（开机自启）。
-# 采用 `sc create` + node.exe 直连 的方式: 服务二进制指向 node.exe,
-# 参数为 dsh 的 CLI 入口 js。
+# 把 deepseek harness 的 `dsh web` 安装/管理为开机自启任务（开机自动启动）。
+# 采用 计划任务 (schtasks) + node.exe 直连 的方式: 任务命令为
+# <node.exe> <dsh cli.js> web --port <port> --host <host>。
 #
-# 服务名固定为 dsh-web。命令为 `<node.exe> <dsh cli.js> web --port <port> --host <host>`。
+# 任务名固定为 dsh-web。命令为 `<node.exe> <dsh cli.js> web --port <port> --host <host>`。
 #
 # 用法:
 #   powershell -ExecutionPolicy Bypass -File server-service.ps1 install
@@ -15,7 +15,7 @@
 #   powershell -ExecutionPolicy Bypass -File server-service.ps1 --host 127.0.0.1 install
 #   powershell -ExecutionPolicy Bypass -File server-service.ps1 -Debug install
 #
-# 注意: install/uninstall 需要管理员权限 (sc create / sc delete)。
+# 注意: install/uninstall 需要管理员权限 (schtasks /create / /delete)。
 #
 # 多语言: 与 setup/start-harness 共用 locales/, 键前缀 srvc_。
 
@@ -29,7 +29,11 @@ try {
 $Script:ScriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Script:RootDir     = Split-Path -Parent $Script:ScriptDir
 $Script:DefaultPort = 3080
-$Script:Port        = if ($env:DSH_PORT) { [int]$env:DSH_PORT } else { $Script:DefaultPort }
+$Script:Port        = $Script:DefaultPort
+if ($env:DSH_PORT) {
+    try { $Script:Port = [int]$env:DSH_PORT }
+    catch { Write-Host "[WARN] DSH_PORT is not a number, using default $($Script:DefaultPort): $env:DSH_PORT" -ForegroundColor Yellow }
+}
 $Script:BindHost    = "127.0.0.1"
 $Script:Debug       = $false
 $Script:SvcName     = "dsh-web"
@@ -102,6 +106,7 @@ function Show-Usage {
     Write-Host "  $((msg srvc_usage_host))"
     Write-Host (msg srvc_usage_debug)
     Write-Host (msg srvc_usage_help)
+    Write-Host (msg srvc_usage_nopause)
 }
 
 # ---------- 解析参数 (支持 -, --, / 三种前缀) ----------
@@ -181,14 +186,17 @@ function Resolve-Runtime {
     }
 }
 
-# ---------- sc 查询/存在判断 ----------
+# ---------- 计划任务 查询/存在判断 (schtasks) ----------
 function Get-SvcExists {
-    sc.exe query $Script:SvcName *> $null
+    schtasks.exe /query /tn $Script:SvcName *> $null
     return ($LASTEXITCODE -eq 0)
 }
 function Get-SvcRunning {
-    $out = sc.exe query $Script:SvcName 2>$null
-    return [bool]($out | Select-String -Quiet "RUNNING")
+    # 任务状态用 PowerShell 查询 (State 为英文枚举, 不受系统语言影响)
+    try {
+        $t = Get-ScheduledTask -TaskName $Script:SvcName -ErrorAction Stop
+        return ($t.State -eq "Running")
+    } catch { return $false }
 }
 
 # ---------- 子命令 ----------
@@ -198,11 +206,10 @@ function Install-Service {
         Write-Info (msg srvc_exists $Script:SvcName)
     } else {
         Write-Info (msg srvc_install $Script:Port)
-        $binPath = "`"$($Script:NodePath)`" `"$($Script:DshCli)`" web --port $($Script:Port) --host $($Script:BindHost)"
-        sc.exe create $Script:SvcName binPath= $binPath start= auto DisplayName= "DeepSeek Harness Web (dsh web)"
+        $taskCmd = "\`"$($Script:NodePath)\`" \`"$($Script:DshCli)\`" web --port $($Script:Port) --host $($Script:BindHost)"
+        schtasks.exe /create /tn $Script:SvcName /tr $taskCmd /sc onstart /ru SYSTEM /rl highest /f
         if ($LASTEXITCODE -ne 0) { Write-Fail (msg srvc_install_fail $Script:SvcName); exit 1 }
-        sc.exe failure $Script:SvcName reset= 86400 actions= restart/5000/restart/5000/restart/5000
-        sc.exe start $Script:SvcName | Out-Null
+        schtasks.exe /run /tn $Script:SvcName | Out-Null
     }
     Write-Ok (msg srvc_installed $Script:SvcName)
 }
@@ -213,8 +220,8 @@ function Uninstall-Service {
         exit 0
     }
     Write-Info (msg srvc_uninstall)
-    if (Get-SvcRunning) { sc.exe stop $Script:SvcName | Out-Null }
-    sc.exe delete $Script:SvcName
+    if (Get-SvcRunning) { schtasks.exe /end /tn $Script:SvcName | Out-Null }
+    schtasks.exe /delete /tn $Script:SvcName /f
     if ($LASTEXITCODE -ne 0) { Write-Fail (msg srvc_uninstall_fail); exit 1 }
     Write-Ok (msg srvc_uninstalled)
 }
@@ -227,8 +234,12 @@ function Show-Status {
 function Start-ServiceX {
     if (-not (Get-SvcExists)) { Write-Fail (msg srvc_not_installed); exit 1 }
     Write-Info (msg srvc_starting)
-    sc.exe start $Script:SvcName | Out-Null
-    if ($LASTEXITCODE -ne 0 -and -not (Get-SvcRunning)) { Write-Fail (msg srvc_stopped) ; exit 1 }
+    schtasks.exe /run /tn $Script:SvcName | Out-Null
+    for ($i = 0; $i -lt 10; $i++) {
+        if (Get-SvcRunning) { break }
+        Start-Sleep -Milliseconds 500
+    }
+    if (-not (Get-SvcRunning)) { Write-Fail (msg srvc_stopped) ; exit 1 }
     Write-Ok (msg srvc_started $Script:SvcName)
 }
 
@@ -236,7 +247,11 @@ function Stop-ServiceX {
     if (-not (Get-SvcExists)) { Write-Fail (msg srvc_not_installed); exit 1 }
     if (Get-SvcRunning) {
         Write-Info (msg srvc_stopping)
-        sc.exe stop $Script:SvcName | Out-Null
+        schtasks.exe /end /tn $Script:SvcName | Out-Null
+        for ($i = 0; $i -lt 10; $i++) {
+            if (-not (Get-SvcRunning)) { break }
+            Start-Sleep -Milliseconds 500
+        }
     }
     Write-Ok (msg srvc_stopped_ok)
 }

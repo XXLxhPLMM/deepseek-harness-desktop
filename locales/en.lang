@@ -59,6 +59,16 @@ dsh_install_local=Debug mode: installing dsh into script dir...
 dsh_done=dsh installed globally
 dsh_fail=dsh install failed: {1}
 
+# --- setup: npm Taobao mirror + global nrm (setup.{sh,ps1,cmd}) ---
+nrm_install=nrm not found, installing globally ...
+nrm_ok=nrm detected
+nrm_done=nrm installed globally
+nrm_fail=nrm install failed: {1}
+nrm_install_local=Debug mode: installing nrm into the script directory...
+registry_set=npm registry switched to Taobao mirror: {1}
+registry_already=npm registry is already the Taobao mirror: {1}
+registry_fail=Failed to set npm registry: {1}
+
 # --- shared keys for start-harness.{sh,ps1,cmd} (prefix sh_) ---
 sh_usage=Usage: {1} [options]
 sh_usage_debug=  --debug        debug: use nodejs under script dir

@@ -3,12 +3,13 @@ rem ============================================================================
 rem  server-service.cmd  -  Windows cmd native service manager for dsh web
 rem
 rem  Installs/manages the `dsh web` DeepSeek Harness service on Windows, using
-rem  `sc create` with node.exe run directly:
+rem  a scheduled task (`schtasks /sc onstart`) with node.exe run directly:
 rem      <node.exe> <dsh cli.js> web --port <port> --host <host>
 rem
-rem  Service name is fixed to dsh-web (auto start on boot).
+rem  Task name is fixed to dsh-web (auto start at boot).
 rem
-rem  Pure cmd implementation. PowerShell is used ONLY for language detection,
+rem  Pure cmd implementation. PowerShell is used for language detection and
+rem  for task status queries (State enum is locale-independent),
 rem  and node.exe is used to resolve the dsh CLI entry from package.json
 rem  (consistent with setup.cmd which also shells out to node/npm).
 rem
@@ -130,6 +131,7 @@ goto :finish
 :do_install
 call :resolve_runtime
 if errorlevel 1 goto :finish
+set "NEED_START=0"
 call :svc_exists
 if not errorlevel 1 (
     call :msg srvc_exists "%SVC_NAME%"
@@ -137,19 +139,20 @@ if not errorlevel 1 (
 ) else (
     call :msg srvc_install "%PORT%"
     echo [INFO] !M!
-    set "BINPATH="%NODE_EXE%" "%DSH_CLI%" web --port %PORT% --host %HOST%"
-    sc create "%SVC_NAME%" binPath= "!BINPATH!" start= auto DisplayName= "DeepSeek Harness Web (dsh web)" >nul 2>nul
+    set "BINPATH=\"%NODE_EXE%\" \"%DSH_CLI%\" web --port %PORT% --host %HOST%"
+    schtasks /create /tn "%SVC_NAME%" /tr "!BINPATH!" /sc onstart /ru SYSTEM /rl highest /f >nul 2>nul
     if errorlevel 1 (
         call :msg srvc_install_fail "%SVC_NAME%"
         echo [ERROR] !M!
         set "EXIT_CODE=1"
         goto :finish
     )
-    sc failure "%SVC_NAME%" reset= 86400 actions= restart/5000/restart/5000/restart/5000 >nul 2>nul
+    set "NEED_START=1"
 )
 call :msg srvc_installed "%SVC_NAME%"
 echo [OK]    !M!
-goto :do_start
+if "%NEED_START%"=="1" goto :do_start
+goto :finish
 
 :do_uninstall
 call :svc_exists
@@ -161,8 +164,8 @@ if errorlevel 1 (
 call :msg srvc_uninstall
 echo [INFO] !M!
 call :svc_running
-if not errorlevel 1 sc stop "%SVC_NAME%" >nul 2>nul
-sc delete "%SVC_NAME%" >nul 2>nul
+if not errorlevel 1 schtasks /end /tn "%SVC_NAME%" >nul 2>nul
+schtasks /delete /tn "%SVC_NAME%" /f >nul 2>nul
 if errorlevel 1 (
     call :msg srvc_uninstall_fail
     echo [ERROR] !M!
@@ -200,16 +203,23 @@ if errorlevel 1 (
 )
 call :msg srvc_starting
 echo [INFO] !M!
-sc start "%SVC_NAME%" >nul 2>nul
+schtasks /run /tn "%SVC_NAME%" >nul 2>nul
+set "TRY=0"
+:start_wait
 call :svc_running
-if errorlevel 1 (
-    call :msg srvc_stopped
-    echo [ERROR] !M!
-    set "EXIT_CODE=1"
-    goto :finish
-)
+if not errorlevel 1 goto :start_ok
+set /a TRY+=1
+if "%TRY%" GEQ "10" goto :start_fail
+ping -n 1 -w 500 127.0.0.1 >nul 2>nul
+goto :start_wait
+:start_ok
 call :msg srvc_started "%SVC_NAME%"
 echo [OK]    !M!
+goto :finish
+:start_fail
+call :msg srvc_stopped
+echo [ERROR] !M!
+set "EXIT_CODE=1"
 goto :finish
 
 :do_stop
@@ -224,7 +234,7 @@ call :svc_running
 if not errorlevel 1 (
     call :msg srvc_stopping
     echo [INFO] !M!
-    sc stop "%SVC_NAME%" >nul 2>nul
+    schtasks /end /tn "%SVC_NAME%" >nul 2>nul
 )
 call :msg srvc_stopped_ok
 echo [OK]    !M!
@@ -267,36 +277,38 @@ if not errorlevel 1 (
 )
 :have_dsh_dir
 if defined DSH_PKG_DIR (
-    rem extract "dsh":  "<path>" value from package.json without running node -e
+    rem extract the quoted value of the "dsh" bin entry from package.json (no node needed)
     set "RAW="
-    for /f "usebackq delims=" %%L in (`findstr /I /C:"\"dsh\"" "%DSH_PKG_DIR%\package.json"`) do set "RAW=%%L"
-    for /f "tokens=2 delims=:" %%T in ("!RAW!") do set "DSH_BIN_REL=%%T"
-    set "DSH_BIN_REL=!DSH_BIN_REL:"=!"
-    set "DSH_BIN_REL=!DSH_BIN_REL:~1!"
-    set "DSH_BIN_REL=!DSH_BIN_REL: =!"
-    set "DSH_CLI=!DSH_PKG_DIR!\!DSH_BIN_REL!"
+    for /f "usebackq delims=" %%L in (`findstr /I /C:"\"dsh\":" "%DSH_PKG_DIR%\package.json"`) do if not defined RAW set "RAW=%%L"
+    if defined RAW (
+        set "RAW=!RAW:*"dsh":=!"
+        for /f "tokens=1 delims=,}" %%P in ("!RAW!") do set "DSH_BIN_REL=%%P"
+        set "DSH_BIN_REL=!DSH_BIN_REL: =!"
+        set "DSH_BIN_REL=!DSH_BIN_REL:"=!"
+        if defined DSH_BIN_REL set "DSH_CLI=!DSH_PKG_DIR!\!DSH_BIN_REL!"
+    )
 )
-if not defined NODE_EXE if not exist "%NODE_EXE%" (
-    call :msg srvc_node_fail
-    echo [ERROR] !M!
-    exit /b 1
-)
-if not defined DSH_CLI if not exist "%DSH_CLI%" (
-    call :msg srvc_dsh_fail
-    echo [ERROR] !M!
-    exit /b 1
-)
-exit /b 0
+if defined NODE_EXE if exist "%NODE_EXE%" goto :node_ok
+call :msg srvc_node_fail
+echo [ERROR] !M!
+exit /b 1
+:node_ok
+if defined DSH_CLI if exist "%DSH_CLI%" exit /b 0
+call :msg srvc_dsh_fail
+echo [ERROR] !M!
+exit /b 1
 
-rem ---- service exists: errorlevel 0=yes, 1=no ----
+rem ---- task exists: errorlevel 0=yes, 1=no ----
 :svc_exists
-sc query "%SVC_NAME%" >nul 2>nul
+schtasks /query /tn "%SVC_NAME%" >nul 2>nul
 if not errorlevel 1 exit /b 0
 exit /b 1
 
-rem ---- service running: errorlevel 0=running, 1=not ----
+rem ---- task running: errorlevel 0=running, 1=not ----
+rem Uses PowerShell (State enum is locale-independent). NOTE: never write
+rem "if(" without a space inside the quoted string (cmd label mis-parse).
 :svc_running
-sc query "%SVC_NAME%" 2>nul | findstr /C:"RUNNING" >nul
+powershell -NoProfile -Command "$t=Get-ScheduledTask -TaskName '%SVC_NAME%' -ErrorAction SilentlyContinue; if ($t -and $t.State -eq 'Running'){exit 0}else{exit 1}" >nul 2>nul
 if not errorlevel 1 exit /b 0
 exit /b 1
 
@@ -318,8 +330,4 @@ call :msg srvc_usage_nopause & echo !M!
 goto :finish
 
 :finish
-if "%NO_PAUSE%"=="1" exit /b %EXIT_CODE%
-echo.
-echo Press any key to close this window...
-pause >nul
 exit /b %EXIT_CODE%

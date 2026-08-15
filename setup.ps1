@@ -1,12 +1,13 @@
 ﻿# setup.ps1
-# 检测/安装整条工具链: nvm → node → dsh。逐级检查, 拒绝重复安装。
+# 检测/安装整条工具链: nvm → node → npm 淘宝镜像 + nrm → dsh。逐级检查, 拒绝重复安装。
 # 只做一件事: 检测当前环境缺什么, 补装什么。
 # Windows 原生 PowerShell 脚本。
 #
 # 安装策略:
 #   1) nvm 只检测/使用 (不安装), 有则优先用 nvm 安装 Node 22。
 #   2) 否则从 nodejs.org 官方下载 zip 安装到 -Dir (默认脚本目录下的 nodejs)。
-#   3) dsh 缺失则 npm install -g @deepseek-ai/dsh (调试模式装到脚本目录)。
+#   3) node 就绪后: npm 源设为淘宝镜像, 全局安装 nrm。
+#   4) dsh 缺失则 npm install -g @deepseek-ai/dsh (调试模式装到脚本目录)。
 #
 # 用法:
 #   powershell -ExecutionPolicy Bypass -File setup.ps1
@@ -37,6 +38,8 @@ $Script:MinMajor  = 22
 $Script:BaseUrl   = "https://nodejs.org/dist"
 $Script:ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Script:DshPkg    = "@deepseek-ai/dsh"
+$Script:NpmRegistry = "https://registry.npmmirror.com"   # 淘宝 npm 镜像
+$Script:NrmPkg      = "nrm"
 
 # ---------- 语言检测 (决定提示/日志语言: zh/zh-TW/en/ja/ko/fr/de/es, 检测不到默认中文) ----------
 # 用 InstalledUICulture (系统安装的 UI 语言, 不受 chcp 影响; CurrentUICulture 在
@@ -360,6 +363,58 @@ function Install-Dsh {
     return $false
 }
 
+# ---------- npm 淘宝镜像 + nrm 全局安装 (第 2.5 级, 需 node/npm 就绪) ----------
+# 普通模式: 写用户 npm 配置 + 全局安装 nrm。调试模式: 会话级隔离, 不碰用户配置。
+# nrm 安装失败不致命 (警告即可), 不影响核心工具链。
+function Ensure-NpmMirror {
+    # 确保当前会话 npm 可用 (直接下载安装 node 后 PATH 尚未更新)
+    if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+        $npmCand = Join-Path $Script:InstallDir "npm.cmd"
+        if (Test-Path $npmCand) { $env:Path = "$($Script:InstallDir);$env:Path" }
+    }
+    # 调试模式: 用会话级环境变量设置源, 不写用户 ~/.npmrc
+    if ($ArgDebug) { $env:npm_config_registry = $Script:NpmRegistry }
+
+    if ($ArgDryRun) {
+        if (Get-Command nrm -ErrorAction SilentlyContinue) { Write-Ok (msg nrm_ok) }
+        else { Write-Info (msg dryrun_skip) }
+        $cur = (npm config get registry 2>$null)
+        if ($cur -match "npmmirror") { Write-Ok (msg registry_already $cur) }
+        else { Write-Info (msg dryrun_skip) }
+        return
+    }
+
+    if ($ArgDebug) {
+        Write-Ok (msg registry_set $Script:NpmRegistry)
+    } else {
+        $cur = (npm config get registry 2>$null)
+        if ($cur -match "npmmirror") {
+            Write-Ok (msg registry_already $cur)
+        } else {
+            npm config set registry $Script:NpmRegistry 2>$null
+            if ($LASTEXITCODE -ne 0) { Write-Warn (msg registry_fail $Script:NpmRegistry) }
+            else { Write-Ok (msg registry_set $Script:NpmRegistry) }
+        }
+    }
+
+    if (Get-Command nrm -ErrorAction SilentlyContinue) {
+        Write-Ok (msg nrm_ok)
+        return
+    }
+    if ($ArgDebug) {
+        Write-Info (msg nrm_install_local)
+        & npm install -g --prefix $Script:ScriptDir $Script:NrmPkg 2>$null
+    } else {
+        Write-Info (msg nrm_install)
+        & npm install -g $Script:NrmPkg 2>$null
+    }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warn (msg nrm_fail $Script:NrmPkg)
+    } else {
+        Write-Ok (msg nrm_done)
+    }
+}
+
 # ---------- 配置环境变量 (Windows 用户 PATH) ----------
 function Set-NodeEnv {
     # 提示: 写入环境变量配置...
@@ -463,6 +518,9 @@ function Main {
         }
         $nodeInstalled = $true
     }
+
+    # ---- 第 2.5 级: npm 淘宝镜像 + nrm 全局安装 (需 node 就绪) ----
+    Ensure-NpmMirror
 
     # ---- 第 3 级: dsh (已就绪则跳过, 拒绝重复安装) ----
     if (-not (Test-Dsh)) {

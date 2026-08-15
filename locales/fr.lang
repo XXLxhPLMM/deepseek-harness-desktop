@@ -59,6 +59,16 @@ dsh_install_local=Mode débogage : installation de dsh dans le dossier du script
 dsh_done=dsh installé globalement
 dsh_fail=Échec de l'installation de dsh : {1}
 
+# --- setup: miroir Taobao npm + nrm global (setup.{sh,ps1,cmd}) ---
+nrm_install=nrm introuvable, installation globale ...
+nrm_ok=nrm détecté
+nrm_done=nrm installé globalement
+nrm_fail=Échec de l'installation de nrm : {1}
+nrm_install_local=Mode débogage : installation de nrm dans le dossier du script...
+registry_set=Registre npm basculé vers le miroir Taobao : {1}
+registry_already=Le registre npm est déjà le miroir Taobao : {1}
+registry_fail=Échec de la configuration du registre npm : {1}
+
 # --- clés partagées pour start-harness.{sh,ps1,cmd} (préfixe sh_) ---
 sh_usage=Usage : {1} [options]
 sh_usage_debug=  --debug        débogage : utiliser nodejs du dossier du script

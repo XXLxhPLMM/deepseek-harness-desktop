@@ -2,8 +2,8 @@
 rem ============================================================================
 rem  setup.cmd  -  Windows cmd native setup for the whole toolchain
 rem
-rem  Detects/installs nvm -> node -> dsh level by level. Refuses to reinstall
-rem  anything that is already present. This script only does detection/install.
+rem  Detects/installs nvm -> node -> (npm taobao mirror + nrm) -> dsh level by level.
+rem  Refuses to reinstall anything that is already present. Detection/install only.
 rem
 rem  Pure cmd implementation, does NOT require PowerShell.
 rem  Detects Node.js >= 22, installs via nvm if available, otherwise downloads
@@ -44,6 +44,8 @@ set "MIN_MAJOR=22"
 set "BASE_URL=https://nodejs.org/dist"
 set "SELF=%~nx0"
 set "DSH_PKG=@deepseek-ai/dsh"
+set "NPM_REGISTRY=https://registry.npmmirror.com"
+set "NRM_PKG=nrm"
 
 rem ---- defaults ----
 set "INSTALL_DIR=%SCRIPT_DIR%nodejs"
@@ -123,6 +125,9 @@ if errorlevel 1 (
     set "EXIT_CODE=1"
     goto :finish
 )
+
+rem ---- level 2.5: npm taobao mirror + global nrm (node must be ready) ----
+call :ensure_npm_mirror
 
 rem ---- level 3: dsh (skip if already ok) ----
 call :ensure_dsh
@@ -475,6 +480,84 @@ call :msg dsh_fail "%DSH_PKG%"
 echo [ERROR] !M!
 exit /b 1
 
+rem ---- ensure npm registry (taobao mirror) + global nrm: always errorlevel 0 ----
+:ensure_npm_mirror
+rem ensure npm is available in this session (PATH not yet updated after fresh node install)
+set "NPM_FOUND="
+where npm >nul 2>nul && set "NPM_FOUND=1"
+if not defined NPM_FOUND if exist "%INSTALL_DIR%\npm.cmd" set "PATH=%INSTALL_DIR%;%PATH%"
+rem debug mode: use a session-only env var, do not touch the user npm config
+if "%DEBUG_MODE%"=="1" set "npm_config_registry=%NPM_REGISTRY%"
+
+if "%DRY_RUN%"=="1" (
+    where nrm >nul 2>nul
+    if not errorlevel 1 (
+        call :msg nrm_ok
+        echo [OK]    !M!
+    ) else (
+        call :msg dryrun_skip
+        echo [INFO] !M!
+    )
+    set "CUR_REG="
+    for /f "usebackq delims=" %%r in (`npm config get registry 2^>nul`) do set "CUR_REG=%%r"
+    echo !CUR_REG! | findstr /I "npmmirror" >nul
+    if not errorlevel 1 (
+        call :msg registry_already "!CUR_REG!"
+        echo [OK]    !M!
+    ) else (
+        call :msg dryrun_skip
+        echo [INFO] !M!
+    )
+    exit /b 0
+)
+
+if "%DEBUG_MODE%"=="1" (
+    call :msg registry_set "%NPM_REGISTRY%"
+    echo [OK]    !M!
+) else (
+    set "CUR_REG="
+    for /f "usebackq delims=" %%r in (`npm config get registry 2^>nul`) do set "CUR_REG=%%r"
+    echo !CUR_REG! | findstr /I "npmmirror" >nul
+    if not errorlevel 1 (
+        call :msg registry_already "!CUR_REG!"
+        echo [OK]    !M!
+    ) else (
+        npm config set registry "%NPM_REGISTRY%" >nul 2>nul
+        if errorlevel 1 (
+            call :msg registry_fail "%NPM_REGISTRY%"
+            echo [WARN] !M!
+        ) else (
+            call :msg registry_set "%NPM_REGISTRY%"
+            echo [OK]    !M!
+        )
+    )
+)
+
+where nrm >nul 2>nul
+if not errorlevel 1 (
+    call :msg nrm_ok
+    echo [OK]    !M!
+    exit /b 0
+)
+if "%DEBUG_MODE%"=="1" (
+    call :msg nrm_install_local
+    echo [INFO] !M!
+    set "D_DIR=%SCRIPT_DIR:~0,-1%"
+    npm install -g --prefix "%D_DIR%" "%NRM_PKG%" >nul 2>nul
+) else (
+    call :msg nrm_install
+    echo [INFO] !M!
+    npm install -g "%NRM_PKG%" >nul 2>nul
+)
+if errorlevel 1 (
+    call :msg nrm_fail "%NRM_PKG%"
+    echo [WARN] !M!
+) else (
+    call :msg nrm_done
+    echo [OK]    !M!
+)
+exit /b 0
+
 rem ---- configure PATH (user + current session) ----
 :configure_env
 call :msg env_writing
@@ -548,8 +631,4 @@ exit /b 0
 
 :finish
 if not defined EXIT_CODE set "EXIT_CODE=0"
-if "%NO_PAUSE%"=="1" exit /b %EXIT_CODE%
-echo.
-echo Press any key to close this window...
-pause >nul
 exit /b %EXIT_CODE%

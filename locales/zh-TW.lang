@@ -59,6 +59,16 @@ dsh_install_local=除錯模式: 安裝 dsh 到指令稿目錄...
 dsh_done=dsh 已全域安裝
 dsh_fail=dsh 安裝失敗: {1}
 
+# --- setup: npm 淘寶鏡像 + nrm 全域安裝 (setup.{sh,ps1,cmd}) ---
+nrm_install=未偵測到 nrm，開始全域安裝 nrm ...
+nrm_ok=已偵測到 nrm
+nrm_done=nrm 已全域安裝
+nrm_fail=nrm 安裝失敗: {1}
+nrm_install_local=偵錯模式: 安裝 nrm 到腳本目錄...
+registry_set=已切換 npm 源到淘寶鏡像: {1}
+registry_already=npm 源已是淘寶鏡像: {1}
+registry_fail=設定 npm 源失敗: {1}
+
 # --- start-harness.{sh,ps1,cmd} 共用鍵 (前綴 sh_) ---
 sh_usage=使用方法: {1} [選項]
 sh_usage_debug=  --debug        除錯模式: 使用指令稿目錄下的 nodejs

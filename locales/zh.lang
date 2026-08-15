@@ -59,6 +59,16 @@ dsh_install_local=调试模式: 安装 dsh 到脚本目录...
 dsh_done=dsh 已全局安装
 dsh_fail=dsh 安装失败: {1}
 
+# --- setup: npm 淘宝镜像 + nrm 全局安装 (setup.{sh,ps1,cmd}) ---
+nrm_install=未检测到 nrm，开始全局安装 nrm ...
+nrm_ok=已检测到 nrm
+nrm_done=nrm 已全局安装
+nrm_fail=nrm 安装失败: {1}
+nrm_install_local=调试模式: 安装 nrm 到脚本目录...
+registry_set=已切换 npm 源到淘宝镜像: {1}
+registry_already=npm 源已是淘宝镜像: {1}
+registry_fail=设置 npm 源失败: {1}
+
 # --- start-harness.{sh,ps1,cmd} 共享键 (前缀 sh_) ---
 sh_usage=用法: {1} [选项]
 sh_usage_debug=  --debug        调试模式: 使用脚本目录下的 nodejs

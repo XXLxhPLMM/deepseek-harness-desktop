@@ -143,10 +143,6 @@ if "%SUCCESS%"=="1" exit /b 0
 goto :finish
 
 :finish
-if "%NO_PAUSE%"=="1" exit /b 0
-echo.
-echo Press any key to close this window...
-pause >nul
 exit /b 0
 
 :show_help

@@ -175,7 +175,7 @@ resolve_runtime() {
         local cand
         cand="$ROOT_DIR/node_modules/@deepseek-ai/dsh"
         if [[ -f "$cand/package.json" ]]; then
-            DSH_CLI="$(node -e "const p=require('$cand/package.json'); const b=p.bin&&p.bin.dsh||p.bin; process.stdout.write(require('path').join('$cand', typeof b==='string'?b:b.dsh))" 2>/dev/null || echo "")"
+            DSH_CLI="$("$NODE_PATH" -e "const p=require('$cand/package.json'); const b=p.bin&&p.bin.dsh||p.bin; process.stdout.write(require('path').join('$cand', typeof b==='string'?b:b.dsh))" 2>/dev/null || echo "")"
         fi
     else
         if command -v node >/dev/null 2>&1; then
@@ -186,7 +186,7 @@ resolve_runtime() {
             root="$(npm root -g 2>/dev/null || true)"
             pj="$root/@deepseek-ai/dsh/package.json"
             if [[ -f "$pj" ]]; then
-                binval="$(node -e "const p=require('$pj'); const b=p.bin&&p.bin.dsh||p.bin; process.stdout.write(require('path').join('$root/@deepseek-ai/dsh', typeof b==='string'?b:(b&&b.dsh)||''))" 2>/dev/null || echo "")"
+                binval="$("$NODE_PATH" -e "const p=require('$pj'); const b=p.bin&&p.bin.dsh||p.bin; process.stdout.write(require('path').join('$root/@deepseek-ai/dsh', typeof b==='string'?b:(b&&b.dsh)||''))" 2>/dev/null || echo "")"
                 if [[ -n "$binval" && -f "$binval" ]]; then
                     DSH_CLI="$binval"
                 fi

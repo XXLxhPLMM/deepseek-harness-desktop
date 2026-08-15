@@ -17,11 +17,12 @@
 
 ## setup 职责（三套脚本逻辑一致）
 
-**setup 只做一件事：逐级检测/安装工具链 nvm → node → dsh，拒绝重复安装。**
+**setup 只做一件事：逐级检测/安装工具链 nvm → node → (npm 淘宝镜像 + nrm) → dsh，拒绝重复安装。**
 
 1. **nvm**：只检测/使用（`nvm` shell 函数 / `nvm.exe`），**从不安装 nvm**。
 2. **node**：检测 `node --version` 主版本是否 ≥22 → 是则跳过；若装 nvm 则优先用 nvm 安装 Node 22；nvm 安装失败或未装 nvm → 从 `nodejs.org/dist` 官方下载到指定目录（默认**脚本启动目录**下的 `nodejs`）。
-3. **dsh**：检测 `dsh` 命令是否存在 → 存在跳过；缺失则 `npm install -g @deepseek-ai/dsh`。
+3. **npm 镜像 + nrm**：node 就绪后，npm 源设为淘宝镜像 `https://registry.npmmirror.com`（已设则跳过），并全局安装 `nrm`（已装则跳过）。调试模式下用会话级环境变量 `npm_config_registry` 隔离，**不写用户 ~/.npmrc**；nrm 安装失败仅警告，不中断。**注意**：`npm` 未在 PATH 时先补 `INSTALL_DIR`（直接下载安装 node 后 PATH 尚未更新）。
+4. **dsh**：检测 `dsh` 命令是否存在 → 存在跳过；缺失则 `npm install -g @deepseek-ai/dsh`（此时已用淘宝镜像）。
 
 ## 关键参数
 
@@ -38,7 +39,7 @@
   - macOS/Linux 读 `$LANG`/`LC_ALL`。
   - 前缀匹配：`zh-TW/HK/MO`→`zh-TW`（繁体），`zh`→`zh`（简体），`ja/ko/fr/de/es/en`→对应，其余→`zh`。
   - `en` 需显式匹配，否则英文系统会落入默认中文。
-- 现有语言包：`zh`（简体）`zh-TW`（繁体/台湾）`en` `ja` `ko` `fr` `de` `es`（各 82 个键，键名必须完全对齐）。
+- 现有语言包：`zh`（简体）`zh-TW`（繁体/台湾）`en` `ja` `ko` `fr` `de` `es`（各 121 个键，键名必须完全对齐）。
 - 消息查找方式：
   - sh / ps1：`msg <键> [参数…]`；cmd：`call :msg <键> <参数1> <参数2>`，结果存 `!M!`。
   - 动态内容用 `{1}`、`{2}` 占位符，按传入顺序替换。
