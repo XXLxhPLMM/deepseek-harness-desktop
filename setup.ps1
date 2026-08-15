@@ -520,6 +520,11 @@ function Main {
         } else {
             Set-NodeEnv
         }
+    } elseif ($ArgDebug -and (Test-Path "$Script:InstallDir\node.exe")) {
+        # 脚本目录 node 已存在 (本次未安装): 调试模式仍需把脚本目录 node
+        # 前置进会话 PATH, 否则 Remove-NodeFromPath 清掉系统 node 后会话无 node
+        Write-Info (msg debug_session_only)
+        $env:Path = "$Script:InstallDir;$env:Path"
     }
 
     Write-Host ""

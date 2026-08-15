@@ -17,7 +17,33 @@
 # 多语言: 提示/日志根据系统语言自动加载 locales/{zh,en,...}.lang,
 #         消息以 msg <键> [参数...] 查找, {1}/{2} 为占位符按序替换。
 
-set -euo pipefail
+# 激活当前会话: 被 source 时 (bash), 脚本对当前 shell 的环境修改在脚本
+# 结束后保留 (debug 模式把脚本目录 node 前置进 PATH 等)。用法:
+#   source setup.sh --debug          # 激活当前 bash 会话 (环境保持)
+#   ./setup.sh --debug               # 隔离模式 (脚本进程内生效)
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+    ACTIVATE_MODE=1
+    _SETUP_SAVED_SET="$(set +o)"
+else
+    ACTIVATE_MODE=0
+fi
+if [[ "$ACTIVATE_MODE" -eq 1 ]]; then
+    # 激活模式不使用 -e: 避免脚本内未预期的错误把用户 shell 一并退出
+    set -u -o pipefail
+else
+    set -euo pipefail
+fi
+
+# 脚本退出点 (仅用于顶层): 普通模式 exit, source 激活模式 return 回调用 shell
+# 并恢复调用者原有的 shell 选项。函数内部请直接用 return N。
+setup_exit() {
+    local rc="${1:-0}"
+    if [[ "$ACTIVATE_MODE" -eq 1 ]]; then
+        eval "$_SETUP_SAVED_SET"
+        return "$rc"
+    fi
+    exit "$rc"
+}
 
 # ---------- 默认配置 ----------
 VERSION="v22.23.2"                 # Node.js 22 LTS 最新版
@@ -122,7 +148,7 @@ usage() {
     echo "$(msg usage_dryrun)"
     echo "$(msg usage_debug)"
     echo "$(msg usage_help)"
-    exit 0
+    return 0
 }
 
 while [[ $# -gt 0 ]]; do
@@ -131,8 +157,8 @@ while [[ $# -gt 0 ]]; do
         --no-env)  DO_ENV=0; shift ;;
         --dry-run) DRY_RUN=1; shift ;;
         --debug)   DEBUG_MODE=1; shift ;;
-        --help|-h) usage ;;
-        *) echo "$(msg unknown_arg "$1")" >&2; usage ;;
+        --help|-h) usage; setup_exit 0 ;;
+        *) echo "$(msg unknown_arg "$1")" >&2; usage; setup_exit 0 ;;
     esac
 done
 
@@ -222,14 +248,14 @@ detect_platform() {
         Darwin) os=darwin ;;
         Linux)  os=linux ;;
         MINGW*|MSYS*|CYGWIN*) os=win ;;
-        *) fail "$(msg os_unsupported "$(uname -s)")"; exit 1 ;;  # 提示: 不支持的操作系统: <name>
+        *) fail "$(msg os_unsupported "$(uname -s)")"; return 1 ;;  # 提示: 不支持的操作系统: <name>
     esac
 
     case "$(uname -m)" in
         x86_64|amd64) arch=x64 ;;
         aarch64|arm64) arch=arm64 ;;
         i686|i386)     arch=x86 ;;
-        *) fail "$(msg arch_unsupported "$(uname -m)")"; exit 1 ;;  # 提示: 不支持的架构: <arch>
+        *) fail "$(msg arch_unsupported "$(uname -m)")"; return 1 ;;  # 提示: 不支持的架构: <arch>
     esac
     echo "$os $arch"
 }
@@ -257,7 +283,7 @@ install_node() {
     if ! curl -L --fail --progress-bar -o "$tmpfile" "$dist_url"; then
         rm -f "$tmpfile"
         fail "$(msg download_fail "$dist_url")"   # 提示: 下载失败: <url>
-        exit 1
+        return 1
     fi
 
     # 提示: 创建安装目录: <dir>
@@ -506,7 +532,7 @@ main() {
         if [[ "$DRY_RUN" -eq 1 ]]; then
             # 提示: --dry-run 模式，跳过安装
             info "$(msg dryrun_skip)"
-            exit 1
+            return 1
         fi
 
         local node_done=1
@@ -527,7 +553,7 @@ main() {
         fi
 
         if [[ "$node_done" -ne 0 ]]; then
-            install_node || exit 1
+            install_node || return 1
         fi
         NODE_INSTALLED=1
     fi
@@ -542,9 +568,9 @@ main() {
         if [[ "$DRY_RUN" -eq 1 ]]; then
             # 提示: --dry-run 模式，跳过安装
             info "$(msg dryrun_skip)"
-            exit 1
+            return 1
         fi
-        install_dsh || exit 1
+        install_dsh || return 1
     fi
 
     # ---- 环境变量 (仅当实际安装了 node 时才需要配置) ----
@@ -567,6 +593,15 @@ main() {
                 warn "$(msg noenv_manual "$INSTALL_DIR")"
             fi
         fi
+    elif [[ "$DEBUG_MODE" -eq 1 && -d "$INSTALL_DIR" ]]; then
+        # 脚本目录 node 已存在 (本次未安装): 调试模式仍需把脚本目录 node
+        # 前置进会话 PATH, 否则 remove_node_from_path 清掉系统 node 后会话无 node
+        info "$(msg debug_session_only)"
+        if is_mingw; then
+            export PATH="$INSTALL_DIR:$PATH"
+        else
+            export PATH="$INSTALL_DIR/bin:$PATH"
+        fi
     fi
 
     echo ""
@@ -577,3 +612,14 @@ main() {
 }
 
 main "$@"
+rc=$?
+if [[ "$ACTIVATE_MODE" -eq 1 ]]; then
+    # source 激活模式: 保留环境修改, 但清掉本脚本的函数/变量, 恢复 shell 选项
+    unset -f detect_lang info ok warn fail load_lang msg usage is_mingw detect_nvm \
+        detect_node install_node_via_nvm detect_platform install_node ensure_npm_mirror \
+        detect_dsh install_dsh configure_env remove_node_from_path main setup_exit 2>/dev/null
+    eval "$_SETUP_SAVED_SET"
+    unset ACTIVATE_MODE _SETUP_SAVED_SET 2>/dev/null
+    return "$rc"
+fi
+exit "$rc"

@@ -45,6 +45,20 @@ bash start.sh
 
 首次运行会自动补齐缺失的工具链（需网络）；之后再次运行秒开。
 
+> **首次启动前，需要先安装 dsh 服务**（一次即可，服务随开机自启）：
+>
+> ```bat
+> rem Windows（管理员权限）
+> server\server-service.cmd install
+> ```
+>
+> ```bash
+> # macOS / Linux（sudo）
+> sudo bash server/server-service.sh install
+> ```
+>
+> 若服务尚未安装，`start.cmd` / `start.ps1` / `start.sh` 只能检测/尝试启动，会提示服务未安装，需先执行上面的 install。
+
 ## 脚本一览
 
 项目分三组脚本，各平台之间逻辑一致。
@@ -142,6 +156,18 @@ bash install-server-service.sh
 3. **跳过 nvm**，强制官方下载；
 4. 后续 nrm/dsh 与普通模式逻辑一致（`npm install -g`）：PATH 已指向脚本目录 node，其全局前缀天然隔离；并用会话级 `npm_config_registry` / `npm_config_prefix` 隔离 npm 源与全局目录，**不写用户 `~/.npmrc`**；
 5. 只更新当前会话 PATH，**不写**用户持久化 PATH。
+
+### 激活当前会话（debug 环境保持）
+
+直接运行 `setup.cmd` / `setup.sh` / `setup.ps1` 时，脚本的环境修改只在其进程内生效（脚本退出即恢复）。若想让**当前终端会话**也切到调试环境（`node` 指向脚本目录 `nodejs/`、npm 走淘宝镜像），请用激活式调用：
+
+| shell | 激活命令 | 说明 |
+| --- | --- | --- |
+| cmd | `call setup.cmd --debug` | `call` 在同一 cmd 实例内执行，环境保留 |
+| git-bash / bash | `source setup.sh --debug` | `source` 在当前 shell 内执行，环境保留 |
+| PowerShell | `.\setup.ps1 -Debug` | `$env:` 修改天然保留，直接运行即可 |
+
+激活后当前会话即切换到调试环境（`node -v` 显示脚本目录版本），不写用户持久化 PATH；新开终端不受影响。
 
 ## 多语言（i18n）
 

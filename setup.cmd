@@ -609,4 +609,12 @@ exit /b 0
 
 :finish
 if not defined EXIT_CODE set "EXIT_CODE=0"
+rem Keep session changes when called via "call setup.cmd --debug" (activate
+rem current cmd session): endlocal & set the key vars with the inner values.
+rem %KEEP_*% expand during line parse (before endlocal) so they carry the
+rem inner values; npm_config_* only exist in debug mode.
+set "KEEP_PATH=%PATH%"
+set "KEEP_REG=%npm_config_registry%"
+set "KEEP_PFX=%npm_config_prefix%"
+endlocal & set "PATH=%KEEP_PATH%" & set "npm_config_registry=%KEEP_REG%" & set "npm_config_prefix=%KEEP_PFX%"
 exit /b %EXIT_CODE%

@@ -60,6 +60,21 @@
 5. 只更新当前会话 PATH，**不写**用户持久化 PATH。
 6. 只检查脚本目录：node 只看 `nodejs/`；nrm/dsh 通过 PATH 检测（视角一致）。
 
+### 激活当前会话（环境保持）
+
+直接运行脚本（`./setup.sh` / `setup.cmd` / `setup.ps1`）时环境修改只在其进程内生效。要切到 debug 环境并**保留在当前终端会话**，须用激活式调用（shell 机制决定：脚本无法改父进程环境）：
+
+| shell | 命令 |
+| --- | --- |
+| cmd | `call setup.cmd --debug` |
+| bash | `source setup.sh --debug` |
+| PowerShell | `.\setup.ps1 -Debug`（`$env:` 天然保留） |
+
+- **setup.cmd**：`setlocal` 下所有完成路径经 `goto :finish`；`:finish` 用 `endlocal & set "PATH=%KEEP_PATH%" & set "npm_config_registry=%KEEP_REG%" & set "npm_config_prefix=%KEEP_PFX%"` 传出关键变量（`%KEEP_*%` 在整行解析期、endlocal 前展开）。**不要在 endlocal 后用 `if defined` 判断**（endlocal 已恢复变量）。
+- **setup.sh**：检测 `[[ "${BASH_SOURCE[0]}" != "$0" ]]` 进入激活模式；激活模式**不启用 `set -e`**（避免未预期错误退出用户 shell），只 `set -u -o pipefail`；所有 `exit N` 在激活模式需经 `return N`/`setup_exit` 传播，顶层 `main "$@"` 捕获 `rc=$?` 后 `eval "$_SETUP_SAVED_SET"` 恢复调用者 shell 选项、`unset -f` 清理脚本函数、`return $rc`。`setup_exit` 必须定义在参数解析 while 之前。
+- **setup.ps1**：`$env:` 修改天然保留；脚本内 `exit N` 被 `&` 调用时只设 `$LASTEXITCODE` 不终止宿主（start.ps1 依赖），成功路径 Main 自然返回即可激活。
+- 环境变量部分需**无条件前置脚本目录 node**（即使本次未新装 node）：脚本目录 node 已存在时 `NODE_INSTALLED` 为假，否则 `remove_node_from_path` 清掉系统 node 后激活会话将无 node（sh `elif` / ps1 `elseif` 分支处理）。
+
 ## 注意事项
 
 - **Node 22 LTS 最新版号**在脚本顶部维护，需手动更新：
