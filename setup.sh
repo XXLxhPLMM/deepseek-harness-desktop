@@ -358,7 +358,7 @@ ensure_npm_mirror() {
     fi
 
     if [[ "$DEBUG_MODE" -eq 1 ]]; then
-        ok "$(msg registry_set "$NPM_REGISTRY")"
+        info "$(msg registry_set_session "$NPM_REGISTRY")"
     else
         local cur
         cur="$(npm config get registry 2>/dev/null || true)"

@@ -64,6 +64,7 @@ nrm_ok=nrm を検出
 nrm_done=nrm をグローバルにインストールしました
 nrm_fail=nrm のインストールに失敗: {1}
 registry_set=npm レジストリを淘宝ミラーに切り替えました: {1}
+registry_set_session=npm レジストリを淘宝ミラーに設定: {1}（セッション限定、~/.npmrc は変更しない）
 registry_already=npm レジストリは既に淘宝ミラーです: {1}
 registry_fail=npm レジストリの設定に失敗: {1}
 
@@ -128,3 +129,18 @@ srvc_stopping=サービスを停止中...
 srvc_stopped_ok=サービスを停止しました
 srvc_install_fail=サービスのインストールに失敗: {1}
 srvc_uninstall_fail=サービスの削除に失敗
+ud_title=deepseek harness dsh 更新 ===
+ud_usage=使用方法: {1} [オプション]
+ud_usage_dryrun=  --dry-run     現在/最新バージョンのみ表示、更新しない
+ud_usage_debug=  --debug       スクリプト配下 node の dsh を更新
+ud_usage_help=  --help        ヘルプを表示
+ud_usage_nopause=  /nopause       終了時に一時停止しない (ダブルクリック用)
+ud_current=現在の dsh バージョン: {1}
+ud_latest=最新の dsh バージョン: {1}
+ud_up_to_date=dsh は最新です
+ud_updating=@deepseek-ai/dsh を更新中...
+ud_done=dsh を {1} に更新しました
+ud_fail=dsh の更新に失敗: {1}
+ud_no_dsh=dsh が見つかりません。setup または install-server-service を先に実行してください。
+ud_restarting=dsh-web サービスが実行中、再起動しています...
+ud_restart_done=dsh-web サービスを再起動しました

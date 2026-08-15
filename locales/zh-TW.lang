@@ -64,6 +64,7 @@ nrm_ok=已偵測到 nrm
 nrm_done=nrm 已全域安裝
 nrm_fail=nrm 安裝失敗: {1}
 registry_set=已切換 npm 源到淘寶鏡像: {1}
+registry_set_session=設定 npm 源為淘寶鏡像: {1}（工作階段級，不寫 ~/.npmrc）
 registry_already=npm 源已是淘寶鏡像: {1}
 registry_fail=設定 npm 源失敗: {1}
 
@@ -128,3 +129,18 @@ srvc_stopping=正在停止服務...
 srvc_stopped_ok=服務已停止
 srvc_install_fail=服務安裝失敗: {1}
 srvc_uninstall_fail=服務卸載失敗
+ud_title=deepseek harness dsh 更新 ===
+ud_usage=使用方法: {1} [選項]
+ud_usage_dryrun=  --dry-run     只顯示目前/最新版本，不更新
+ud_usage_debug=  --debug       更新指令稿目錄 node 下的 dsh
+ud_usage_help=  --help        顯示幫助
+ud_usage_nopause=  /nopause       退出時不暫停視窗 (雙擊執行時用)
+ud_current=目前 dsh 版本: {1}
+ud_latest=最新 dsh 版本: {1}
+ud_up_to_date=dsh 已是最新版本
+ud_updating=正在更新 @deepseek-ai/dsh ...
+ud_done=dsh 已更新到 {1}
+ud_fail=dsh 更新失敗: {1}
+ud_no_dsh=未偵測到 dsh。請先執行 setup 或 install-server-service。
+ud_restarting=dsh-web 服務正在執行，正在重啟...
+ud_restart_done=dsh-web 服務已重啟

@@ -145,6 +145,18 @@ bash install-server-service.sh
 
 > Windows 的 `install` / `uninstall` 需要管理员权限；Linux / macOS 需要 root / sudo。
 
+**更新 dsh** —— `update-dsh.<ext>`：把 `@deepseek-ai/dsh` 更新到最新版，若服务已安装则自动重启使其生效：
+
+```bat
+server\update-dsh.cmd          # 更新 dsh 并重启服务
+server\update-dsh.cmd --dry-run  # 只显示当前/最新版本，不更新
+server\update-dsh.cmd --debug    # 更新脚本目录 node 下的 dsh
+```
+
+```bash
+bash server/update-dsh.sh       # macOS / Linux 同参数
+```
+
 ## 端口解析
 
 启动器按以下优先级解析 `dsh web` 端口：

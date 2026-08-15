@@ -64,6 +64,7 @@ nrm_ok=nrm detectado
 nrm_done=nrm instalado globalmente
 nrm_fail=Error al instalar nrm: {1}
 registry_set=Registro npm cambiado al espejo de Taobao: {1}
+registry_set_session=Registro npm establecido al espejo de Taobao: {1} (solo sesión, sin ~/.npmrc)
 registry_already=El registro npm ya es el espejo de Taobao: {1}
 registry_fail=Error al configurar el registro npm: {1}
 
@@ -128,3 +129,18 @@ srvc_stopping=Deteniendo el servicio...
 srvc_stopped_ok=Servicio detenido
 srvc_install_fail=Error al instalar el servicio: {1}
 srvc_uninstall_fail=Error al eliminar el servicio
+ud_title=deepseek harness actualización de dsh ===
+ud_usage=Uso: {1} [opciones]
+ud_usage_dryrun=  --dry-run     mostrar solo versión actual/última
+ud_usage_debug=  --debug       actualizar dsh bajo el node del script
+ud_usage_help=  --help        mostrar ayuda
+ud_usage_nopause=  /nopause       salir sin pausar (doble clic)
+ud_current=versión actual de dsh: {1}
+ud_latest=última versión de dsh: {1}
+ud_up_to_date=dsh ya está actualizado
+ud_updating=actualizando @deepseek-ai/dsh ...
+ud_done=dsh actualizado a {1}
+ud_fail=fallo al actualizar dsh: {1}
+ud_no_dsh=dsh no encontrado. Ejecute primero setup o install-server-service.
+ud_restarting=el servicio dsh-web está en ejecución, reiniciando...
+ud_restart_done=servicio dsh-web reiniciado

@@ -503,8 +503,8 @@ if "%DRY_RUN%"=="1" (
 )
 
 if "%DEBUG_MODE%"=="1" (
-    call :msg registry_set "%NPM_REGISTRY%"
-    echo [OK]    !M!
+    call :msg registry_set_session "%NPM_REGISTRY%"
+    echo [INFO] !M!
 ) else (
     set "CUR_REG="
     for /f "usebackq delims=" %%r in (`npm config get registry 2^>nul`) do set "CUR_REG=%%r"

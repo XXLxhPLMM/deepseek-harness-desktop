@@ -357,7 +357,7 @@ function Ensure-NpmMirror {
     }
 
     if ($ArgDebug) {
-        Write-Ok (msg registry_set $Script:NpmRegistry)
+        Write-Info (msg registry_set_session $Script:NpmRegistry)
     } else {
         $cur = (npm config get registry 2>$null)
         if ($cur -match "npmmirror") {
