@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
 #
-# setup-node.sh
-# 检测当前环境是否有 Node.js 22+，如果没有则自动下载安装，并配置环境变量。
+# setup.sh
+# 检测/安装整条工具链: nvm → node → dsh。逐级检查, 拒绝重复安装。
+# 只做一件事: 检测当前环境缺什么, 补装什么。
 #
 # 用法:
-#   ./setup-node.sh                 # 使用默认安装目录 (脚本目录下的 nodejs)
-#   ./setup-node.sh --dir /path     # 指定安装目录
-#   ./setup-node.sh --no-env        # 不修改环境变量(PATH)
-#   ./setup-node.sh --dry-run       # 只检测, 不下载
+#   ./setup.sh                       # 检测/安装 nvm → node → dsh
+#   ./setup.sh --dir /path           # 指定 node 安装目录 (默认: 脚本目录下的 nodejs)
+#   ./setup.sh --no-env              # 不修改环境变量(PATH)
+#   ./setup.sh --dry-run             # 只检测, 不安装
+#   ./setup.sh --debug               # 调试模式: 清理环境变量, 只检查脚本目录, 安装到脚本目录
+#   ./setup.sh --help
 #
 # 兼容: Windows(git-bash/MSYS2) / macOS / Linux
 #
-# 多语言: 提示/日志根据系统语言自动加载 locales/{zh,en}.lang,
+# 多语言: 提示/日志根据系统语言自动加载 locales/{zh,en,...}.lang,
 #         消息以 msg <键> [参数...] 查找, {1}/{2} 为占位符按序替换。
 
 set -euo pipefail
@@ -22,6 +25,7 @@ MIN_MAJOR=22
 BASE_URL="https://nodejs.org/dist"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="${NODE_INSTALL_DIR:-$SCRIPT_DIR/nodejs}"
+DSH_PKG="@deepseek-ai/dsh"
 DO_ENV=1
 DRY_RUN=0
 DEBUG_MODE=0
@@ -130,32 +134,18 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# ---------- 检测 Node ----------
-detect_node() {
-    local version major
-    if command -v node >/dev/null 2>&1; then
-        version="$(node --version 2>/dev/null | sed 's/^v//')"
-        major="${version%%.*}"
-        if [[ "$major" =~ ^[0-9]+$ ]] && (( major >= MIN_MAJOR )); then
-            # 提示: 已检测到 Node.js <版本> (>= 22)，无需安装
-            ok "$(msg node_ok "$version" "$MIN_MAJOR")"
-            return 0
-        else
-            # 提示: 检测到 Node.js <版本>，但版本低于 22，需要安装新版本
-            warn "$(msg node_low "$version" "$MIN_MAJOR")"
-            return 1
-        fi
-    else
-        # 提示: 未检测到 Node.js，开始安装...
-        info "$(msg node_not_found)"
+is_mingw() { [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; }
+
+# ---------- 逐级检查: nvm → node → dsh (拒绝重复安装) ----------
+
+# ---- 第 1 级: nvm (只检测/使用, 不安装) ----
+# 调试模式下只检查脚本目录, 直接判定无 nvm。
+detect_nvm() {
+    if [[ "$DEBUG_MODE" -eq 1 ]]; then
         return 1
     fi
-}
-
-# ---------- 检测 nvm (macOS/Linux: shell 函数; 也可为 nvm-windows) ----------
-detect_nvm() {
     # nvm 是 shell 函数, 需要先加载
-    if [[ -s "$NVM_DIR/nvm.sh" ]]; then
+    if [[ -n "${NVM_DIR:-}" && -s "$NVM_DIR/nvm.sh" ]]; then
         # shellcheck disable=SC1091
         . "$NVM_DIR/nvm.sh"
     fi
@@ -169,7 +159,41 @@ detect_nvm() {
     return 1
 }
 
-# ---------- 使用 nvm 安装 Node ----------
+# ---- 第 2 级: node (>= MIN_MAJOR) ----
+# 普通模式: 检测 PATH 上的 node。调试模式: 只检查脚本目录下的 INSTALL_DIR。
+detect_node() {
+    local version major
+    if [[ "$DEBUG_MODE" -eq 1 ]]; then
+        # 调试模式: 只检查脚本目录 (INSTALL_DIR 已被强制为 SCRIPT_DIR/nodejs)
+        local bin_dir="$INSTALL_DIR"
+        if ! is_mingw; then bin_dir="$INSTALL_DIR/bin"; fi
+        if [[ -x "$bin_dir/node" || -x "$bin_dir/node.exe" ]]; then
+            export PATH="$bin_dir:$PATH"
+            version="$(node --version 2>/dev/null | sed 's/^v//')"
+        fi
+    else
+        if command -v node >/dev/null 2>&1; then
+            version="$(node --version 2>/dev/null | sed 's/^v//')"
+        fi
+    fi
+    if [[ -n "$version" ]]; then
+        major="${version%%.*}"
+        if [[ "$major" =~ ^[0-9]+$ ]] && (( major >= MIN_MAJOR )); then
+            # 提示: 已检测到 Node.js <版本> (>= 22)，无需安装
+            ok "$(msg node_ok "$version" "$MIN_MAJOR")"
+            return 0
+        else
+            # 提示: 检测到 Node.js <版本>，但版本低于 22，需要安装新版本
+            warn "$(msg node_low "$version" "$MIN_MAJOR")"
+            return 1
+        fi
+    fi
+    # 提示: 未检测到 Node.js，开始安装...
+    info "$(msg node_not_found)"
+    return 1
+}
+
+# ---- 使用 nvm 安装 Node ----
 install_node_via_nvm() {
     # 提示: 检测到 nvm，使用 nvm 安装 Node.js 22.23.2 ...
     info "$(msg nvm_using "${VERSION#v}")"
@@ -189,7 +213,7 @@ install_node_via_nvm() {
     return 0
 }
 
-# ---------- 平台探测 ----------
+# ---- 平台探测 ----
 detect_platform() {
     local os arch
     case "$(uname -s)" in
@@ -208,7 +232,7 @@ detect_platform() {
     echo "$os $arch"
 }
 
-# ---------- 下载并解压 ----------
+# ---- 下载并解压 ----
 install_node() {
     local os arch dist_url tmpfile
     read -r os arch <<<"$(detect_platform)"
@@ -265,6 +289,74 @@ install_node() {
     fi
 }
 
+# ---- 第 3 级: dsh (全局安装 @deepseek-ai/dsh) ----
+# 普通模式: 检测 PATH 上的 dsh。调试模式: 只检查脚本目录。
+detect_dsh() {
+    local cand dir
+    if [[ "$DEBUG_MODE" -eq 1 ]]; then
+        # 调试模式: 只检查脚本目录下可能的位置
+        for cand in "$SCRIPT_DIR/node_modules/.bin/dsh" "$SCRIPT_DIR/bin/dsh" "$SCRIPT_DIR/dsh" "$SCRIPT_DIR/dsh.cmd"; do
+            if [[ -x "$cand" || -f "$cand" ]]; then
+                dir="$(dirname "$cand")"
+                export PATH="$dir:$PATH"
+                if command -v dsh >/dev/null 2>&1; then
+                    ok "$(msg dsh_ok)"
+                    return 0
+                fi
+            fi
+        done
+        return 1
+    fi
+    if command -v dsh >/dev/null 2>&1; then
+        ok "$(msg dsh_ok)"
+        return 0
+    fi
+    return 1
+}
+
+install_dsh() {
+    if [[ "$DEBUG_MODE" -eq 1 ]]; then
+        # 调试模式: 安装到脚本目录 (隔离, 不碰用户全局)
+        # 提示: 调试模式: 安装 dsh 到脚本目录...
+        info "$(msg dsh_install_local)"
+        npm install -g --prefix "$SCRIPT_DIR" "$DSH_PKG" || {
+            fail "$(msg dsh_fail "$DSH_PKG")"
+            return 1
+        }
+        # 补 PATH, 让脚本目录下的 dsh 可用
+        if is_mingw; then
+            export PATH="$SCRIPT_DIR:$PATH"
+        else
+            export PATH="$SCRIPT_DIR/bin:$PATH"
+        fi
+        return 0
+    fi
+    # 普通模式: 全局安装
+    # 提示: 未检测到 dsh，开始全局安装 @deepseek-ai/dsh ...
+    info "$(msg dsh_not_found)"
+    info "$(msg dsh_install)"
+    npm install -g "$DSH_PKG" || {
+        fail "$(msg dsh_fail "$DSH_PKG")"
+        return 1
+    }
+    # npm 全局 bin 可能不在当前 PATH, 尝试补全
+    if ! command -v dsh >/dev/null 2>&1; then
+        local prefix gbin
+        prefix="$(npm prefix -g 2>/dev/null)"
+        if [[ -n "$prefix" ]]; then
+            gbin="$prefix/bin"
+            if is_mingw; then gbin="$prefix"; fi
+            export PATH="$gbin:$PATH"
+        fi
+    fi
+    if command -v dsh >/dev/null 2>&1; then
+        ok "$(msg dsh_done)"
+        return 0
+    fi
+    fail "$(msg dsh_fail "$DSH_PKG")"
+    return 1
+}
+
 # ---------- 配置环境变量 ----------
 # 返回脚本可加载的导出语句 + 向 profile 写入
 configure_env() {
@@ -272,7 +364,7 @@ configure_env() {
     export_line="export PATH=\"$INSTALL_DIR/bin:\$PATH\""
 
     # Windows git-bash: 二进制在根目录 (node.exe, npm.cmd)
-    if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; then
+    if is_mingw; then
         export_line="export PATH=\"$INSTALL_DIR:\$PATH\""
     fi
 
@@ -294,14 +386,14 @@ configure_env() {
         touch "$HOME/.bashrc"
     fi
 
-    local marker="# >>> nodejs setup-node.sh >>>"
+    local marker="# >>> nodejs setup.sh >>>"
     for pf in "${profile_files[@]}"; do
         if ! grep -qF "$marker" "$pf" 2>/dev/null; then
             {
                 echo ""
                 echo "$marker"
                 echo "$export_line"
-                echo "# <<< nodejs setup-node.sh <<<"
+                echo "# <<< nodejs setup.sh <<<"
             } >> "$pf"
             # 提示: 已写入 <file>
             ok "$(msg profile_written "$pf")"
@@ -315,7 +407,7 @@ configure_env() {
     #    注意: 不能用 bash 的 $PATH (MSYS 风格, 含 /e/... 与 ':' 分隔) 直接 setx,
     #    否则会写入损坏的 Windows PATH。用 PowerShell 读写用户 PATH (正确处理 UTF-16,
     #    避免非 ASCII 条目在 reg/setx 控制台代码页下被写坏)。
-    if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]] && command -v powershell >/dev/null 2>&1; then
+    if is_mingw && command -v powershell >/dev/null 2>&1; then
         local winpath ps_script
         winpath="$(cygpath -w "$INSTALL_DIR")"
         ps_script="\$p=[Environment]::GetEnvironmentVariable('Path','User'); if(\$p -and (\$p.Split(';') -contains '$winpath')){ exit 2 } elseif(\$p){ [Environment]::SetEnvironmentVariable('Path', '$winpath;'+\$p, 'User') } else { [Environment]::SetEnvironmentVariable('Path', '$winpath', 'User') }"
@@ -358,62 +450,89 @@ remove_node_from_path() {
 
 # ---------- 主流程 ----------
 main() {
-    # 提示: === Node.js 环境检测与安装 ===
+    # 提示: === 环境检测与安装 ===
     info "$(msg main_title)"
 
     if [[ "$DEBUG_MODE" -eq 1 ]]; then
         # 提示: === 调试模式启用: 安装目录 = <dir> ===
         info "$(msg debug_title "$INSTALL_DIR")"
         remove_node_from_path
+        # 调试模式: 强制安装到脚本目录, 只检查脚本目录
+        INSTALL_DIR="$SCRIPT_DIR/nodejs"
     fi
 
+    # ---- 第 1 级: nvm (只检测, 不安装) ----
+    local nvm_found=0
+    if detect_nvm; then
+        nvm_found=1
+        ok "$(msg nvm_found)"
+    fi
+
+    # ---- 第 2 级: node (已就绪则跳过, 拒绝重复安装) ----
+    local NODE_INSTALLED=0
     if detect_node; then
-        exit 0
-    fi
-
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        # 提示: --dry-run 模式，跳过安装
-        info "$(msg dryrun_skip)"
-        exit 1
-    fi
-
-    local ok=1
-    if [[ "$DEBUG_MODE" -eq 1 ]]; then
-        # 提示: 调试模式: 跳过 nvm，直接官方下载...
-        info "$(msg debug_skip_nvm)"
-        install_node && ok=0
-    elif detect_nvm; then
-        if install_node_via_nvm; then
-            ok=0
-        else
-            # 提示: nvm 安装失败，回退到官方下载方式...
-            warn "$(msg nvm_fail_fallback)"
+        : # 已检测到, 跳过安装
+    else
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            # 提示: --dry-run 模式，跳过安装
+            info "$(msg dryrun_skip)"
+            exit 1
         fi
-    else
-        # 提示: 未检测到 nvm，使用官方下载方式...
-        info "$(msg no_nvm)"
-    fi
 
-    if [[ "$ok" -ne 0 ]]; then
-        install_node || exit 1
-    fi
-
-    if [[ "$DO_ENV" -eq 1 && "$DEBUG_MODE" -ne 1 ]]; then
-        configure_env
-    else
+        local node_done=1
         if [[ "$DEBUG_MODE" -eq 1 ]]; then
-            # 提示: 调试模式: 仅更新当前会话 PATH，不写用户持久化 PATH
-            info "$(msg debug_session_only)"
-            if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; then
-                export PATH="$INSTALL_DIR:$PATH"
+            # 提示: 调试模式: 跳过 nvm，直接官方下载...
+            info "$(msg debug_skip_nvm)"
+            install_node && node_done=0
+        elif [[ "$nvm_found" -eq 1 ]]; then
+            if install_node_via_nvm; then
+                node_done=0
             else
-                export PATH="$INSTALL_DIR/bin:$PATH"
+                # 提示: nvm 安装失败，回退到官方下载方式...
+                warn "$(msg nvm_fail_fallback)"
             fi
         else
-            # 提示: --no-env 已指定，跳过环境变量配置
-            info "$(msg noenv_skip)"
-            # 提示: 请手动将 <dir> 加入 PATH
-            warn "$(msg noenv_manual "$INSTALL_DIR")"
+            # 提示: 未检测到 nvm，使用官方下载方式...
+            info "$(msg no_nvm)"
+        fi
+
+        if [[ "$node_done" -ne 0 ]]; then
+            install_node || exit 1
+        fi
+        NODE_INSTALLED=1
+    fi
+
+    # ---- 第 3 级: dsh (已就绪则跳过, 拒绝重复安装) ----
+    if detect_dsh; then
+        : # 已检测到, 跳过安装
+    else
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            # 提示: --dry-run 模式，跳过安装
+            info "$(msg dryrun_skip)"
+            exit 1
+        fi
+        install_dsh || exit 1
+    fi
+
+    # ---- 环境变量 (仅当实际安装了 node 时才需要配置) ----
+    if [[ "$NODE_INSTALLED" -eq 1 ]]; then
+        if [[ "$DO_ENV" -eq 1 && "$DEBUG_MODE" -ne 1 ]]; then
+            configure_env
+        else
+            if [[ "$DEBUG_MODE" -eq 1 ]]; then
+                # 提示: 调试模式: 仅更新当前会话 PATH，不写用户持久化 PATH
+                info "$(msg debug_session_only)"
+                if is_mingw; then
+                    export PATH="$INSTALL_DIR:$PATH"
+                else
+                    export PATH="$INSTALL_DIR/bin:$PATH"
+                fi
+            else
+                # 提示: --no-env 已指定，跳过环境变量配置
+                info "$(msg noenv_skip)"
+                # 提示: 请手动将 <dir> 加入 PATH
+                warn "$(msg noenv_manual "$INSTALL_DIR")"
+            fi
         fi
     fi
 

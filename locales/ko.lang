@@ -1,9 +1,9 @@
-# 한국어 언어팩 - 시스템 언어에 따라 setup-node.{sh,ps1,cmd} 이(가) 로드
+# 한국어 언어팩 - 시스템 언어에 따라 setup.{sh,ps1,cmd} 이(가) 로드
 usage_usage=사용법: {1} [옵션]
 usage_dir=  --dir <경로>   설치 디렉터리 지정 (기본: 스크립트 폴더의 nodejs)
 usage_noenv=  --no-env       PATH 를 수정하지 않음
 usage_dryrun=  --dry-run      검사만 하고 설치하지 않음
-usage_debug=  --debug        디버그: PATH 에서 nvm/node 제거 후 스크립트 폴더에 설치
+usage_debug=  --debug        디버그: 환경 변수 정리, 스크립트 폴더만 확인 후 설치
 usage_help=  --help         도움말 표시
 usage_nopause=  /nopause       종료 시 일시정지하지 않음 (더블클릭 실행용)
 usage_prefix=  인자는 - , -- , / 접두사를 지원합니다 (예: --help 또는 /help)
@@ -38,7 +38,7 @@ debug_scan=디버그: 현재 PATH 의 nvm / node 항목 확인 중...
 removing=  제거: {1}
 removed=현재 세션 PATH 에서 nvm/node 항목을 제거했습니다
 nothing_removed=현재 세션 PATH 에 nvm / node 항목이 없습니다.
-main_title==== Node.js 환경 확인 및 설치 ===
+main_title==== 환경 확인 및 설치 (nvm → node → dsh) ===
 debug_title==== 디버그 모드 활성화: 설치 디렉터리 = {1} ===
 dryrun_skip=--dry-run 모드, 설치 건너뜀
 debug_skip_nvm=디버그: nvm 을 건너뛰고 공식에서 직접 다운로드...
@@ -51,3 +51,68 @@ done=완료! 변경 사항을 적용하려면 터미널을 다시 여세요.
 node_version=현재 Node 버전: {1}
 nvm_install_fail=nvm install 실패. 네트워크 또는 nvm 구성을 확인하세요.
 install_failed=Node.js 설치 실패. 네트워크를 확인하고 다시 시도하세요.
+nvm_found=nvm 감지됨
+dsh_ok=dsh 감지됨
+dsh_not_found=dsh 가 감지되지 않았습니다. @deepseek-ai/dsh 를 전역 설치합니다 ...
+dsh_install=npm install -g @deepseek-ai/dsh ...
+dsh_install_local=디버그: dsh 를 스크립트 폴더에 설치...
+dsh_done=dsh 전역 설치 완료
+dsh_fail=dsh 설치 실패: {1}
+
+# --- start-harness.{sh,ps1,cmd} 공유 키 (접두사 sh_) ---
+sh_usage=사용법: {1} [옵션]
+sh_usage_debug=  --debug        디버그: 스크립트 폴더의 nodejs 사용
+sh_usage_help=  --help         도움말 표시
+sh_title==== deepseek harness 런처 ===
+sh_node_ok=Node.js {1} 준비 완료
+sh_node_missing=Node.js 가 감지되지 않았습니다. setup-node 로 설치합니다...
+sh_node_local=디버그: 스크립트 폴더의 nodejs 사용: {1}
+sh_node_fail=Node.js 환경 준비 실패
+sh_dsh_ok=dsh 감지됨
+sh_dsh_missing=dsh 가 감지되지 않았습니다. @deepseek-ai/dsh 를 전역 설치합니다 ...
+sh_dsh_install=npm install -g @deepseek-ai/dsh ...
+sh_dsh_done=dsh 전역 설치 완료
+sh_dsh_fail=dsh 설치 실패: {1}
+sh_service_check=dsh 서비스 확인 중: {1} ...
+sh_service_running=dsh 서비스가 이미 실행 중: {1}
+sh_service_start=dsh 서비스 시작 중...
+sh_service_wait=서비스 대기 중...
+sh_service_ready=dsh 서비스 준비 완료: {1}
+sh_service_fail=서비스를 확인할 수 없습니다. {1} 을(를) 수동으로 방문하세요
+sh_browser=브라우저 열기: {1}
+sh_browser_fail=브라우저를 자동으로 열지 못했습니다. {1} 을(를) 수동으로 방문하세요
+sh_unknown=알 수 없는 인수: {1}
+sh_usage_nopause=  /nopause       종료 시 일시정지하지 않음 (더블클릭 실행용)
+
+# --- server-service.{sh,ps1,cmd} 공유 키 (접두사 srvc_) ---
+srvc_title==== deepseek harness 서비스 (dsh web) ===
+srvc_usage=사용법: {1} <install|uninstall|status|start|stop> [옵션]
+srvc_usage_action=  install        dsh web 서비스 등록 및 시작
+srvc_usage_uninstall=  uninstall      dsh web 서비스 제거
+srvc_usage_status=  status         서비스 상태 확인
+srvc_usage_start=  start          서비스 시작
+srvc_usage_stop=  stop           서비스 중지
+srvc_usage_debug=  --debug        디버그: 스크립트 폴더의 nodejs/dsh 사용
+srvc_usage_help=  --help         도움말 표시
+srvc_usage_nopause=  /nopause       종료 시 일시정지하지 않음 (더블클릭 실행용)
+srvc_usage_port=--port <포트>  서비스 포트 (기본: {1})
+srvc_usage_host=--host <주소>  바인딩 주소
+srvc_unknown_action=알 수 없는 작업: {1}
+srvc_no_admin={1} 에는 관리자/root 권한이 필요합니다.
+srvc_win_hint=Windows 에서는 server-service.ps1 (PowerShell) 또는 server-service.cmd 를 사용하세요.
+srvc_node_fail=Node.js 가 감지되지 않았습니다. 먼저 setup 을 실행하세요.
+srvc_dsh_fail=dsh 명령이 감지되지 않았습니다. 먼저 setup 을 실행하세요.
+srvc_install=포트 {1} 에 dsh web 서비스를 설치 중...
+srvc_installed=dsh web 서비스 설치 완료: {1}
+srvc_exists=서비스가 이미 설치됨: {1}
+srvc_uninstall=dsh web 서비스를 제거 중...
+srvc_uninstalled=dsh web 서비스가 제거됨
+srvc_not_installed=서비스가 설치되어 있지 않음
+srvc_running=서비스가 실행 중: {1}
+srvc_stopped=서비스가 중지됨
+srvc_starting=서비스를 시작하는 중...
+srvc_started=서비스 시작됨: {1}
+srvc_stopping=서비스를 중지하는 중...
+srvc_stopped_ok=서비스가 중지됨
+srvc_install_fail=서비스 설치 실패: {1}
+srvc_uninstall_fail=서비스 제거 실패

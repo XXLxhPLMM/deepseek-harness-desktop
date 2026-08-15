@@ -1,9 +1,9 @@
-# 简体中文语言包 - 由 setup-node.{sh,ps1,cmd} 按系统语言加载
+# 简体中文语言包 - 由 setup.{sh,ps1,cmd} 按系统语言加载
 usage_usage=用法: {1} [选项]
 usage_dir=  --dir <路径>   指定安装目录 (默认: 脚本目录下的 nodejs)
 usage_noenv=  --no-env       不修改 PATH 环境变量
 usage_dryrun=  --dry-run      只检测, 不下载安装
-usage_debug=  --debug        调试模式: 从当前会话 PATH 移除 nvm/node 相关项, 安装到脚本目录
+usage_debug=  --debug        调试模式: 清理环境变量, 只检查脚本目录, 安装到脚本目录
 usage_help=  --help         显示帮助
 usage_nopause=  /nopause       退出时不暂停窗口 (双击运行时用)
 usage_prefix=  参数支持 - 、--、/ 三种前缀，如 --help 或 /help
@@ -38,7 +38,7 @@ debug_scan=调试模式: 检测当前 PATH 中的 nvm / node 相关路径...
 removing=  移除: {1}
 removed=已从当前会话 PATH 移除 nvm/node 相关项
 nothing_removed=当前会话 PATH 中未发现 nvm / node 相关项。
-main_title==== Node.js 环境检测与安装 ===
+main_title==== 环境检测与安装 (nvm → node → dsh) ===
 debug_title==== 调试模式启用: 安装目录 = {1} ===
 dryrun_skip=--dry-run 模式，跳过安装
 debug_skip_nvm=调试模式: 跳过 nvm，直接官方下载...
@@ -51,3 +51,68 @@ done=完成! 请重新打开终端使配置生效。
 node_version=当前 Node 版本: {1}
 nvm_install_fail=nvm install 失败，请检查网络或 nvm 配置。
 install_failed=Node.js 安装失败，请检查网络后重试。
+nvm_found=已检测到 nvm
+dsh_ok=已检测到 dsh
+dsh_not_found=未检测到 dsh，开始全局安装 @deepseek-ai/dsh ...
+dsh_install=npm install -g @deepseek-ai/dsh ...
+dsh_install_local=调试模式: 安装 dsh 到脚本目录...
+dsh_done=dsh 已全局安装
+dsh_fail=dsh 安装失败: {1}
+
+# --- start-harness.{sh,ps1,cmd} 共享键 (前缀 sh_) ---
+sh_usage=用法: {1} [选项]
+sh_usage_debug=  --debug        调试模式: 使用脚本目录下的 nodejs
+sh_usage_help=  --help         显示帮助
+sh_title==== deepseek harness 启动器 ===
+sh_node_ok=Node.js {1} 已就绪
+sh_node_missing=未检测到 Node.js，调用 setup-node 安装...
+sh_node_local=调试模式: 使用脚本目录下的 nodejs: {1}
+sh_node_fail=Node.js 环境准备失败
+sh_dsh_ok=已检测到 dsh
+sh_dsh_missing=未检测到 dsh，开始全局安装 @deepseek-ai/dsh ...
+sh_dsh_install=npm install -g @deepseek-ai/dsh ...
+sh_dsh_done=dsh 已全局安装
+sh_dsh_fail=dsh 安装失败: {1}
+sh_service_check=检查 dsh 服务: {1} ...
+sh_service_running=dsh 服务已在运行: {1}
+sh_service_start=启动 dsh 服务...
+sh_service_wait=等待服务就绪...
+sh_service_ready=dsh 服务已就绪: {1}
+sh_service_fail=无法确认服务就绪，请手动访问 {1}
+sh_browser=正在打开浏览器: {1}
+sh_browser_fail=自动打开浏览器失败，请手动访问 {1}
+sh_unknown=未知参数: {1}
+sh_usage_nopause=  /nopause       退出时不暂停窗口 (双击运行时用)
+
+# --- server-service.{sh,ps1,cmd} 共享键 (前缀 srvc_) ---
+srvc_title==== deepseek harness 服务 (dsh web) ===
+srvc_usage=用法: {1} <install|uninstall|status|start|stop> [选项]
+srvc_usage_action=  install       注册并启动 dsh web 服务
+srvc_usage_uninstall=  uninstall     卸载 dsh web 服务
+srvc_usage_status=  status        查看服务状态
+srvc_usage_start=  start         启动服务
+srvc_usage_stop=  stop          停止服务
+srvc_usage_debug=  --debug        调试: 使用脚本目录下的 nodejs/dsh
+srvc_usage_help=  --help         显示帮助
+srvc_usage_nopause=  /nopause       退出时不暂停窗口 (双击运行时用)
+srvc_usage_port=--port <端口>   服务端口 (默认: {1})
+srvc_usage_host=--host <地址>   绑定地址
+srvc_unknown_action=未知操作: {1}
+srvc_no_admin={1} 需要管理员/root 权限。
+srvc_win_hint=在 Windows 上请改用 server-service.ps1 (PowerShell) 或 server-service.cmd。
+srvc_node_fail=未检测到 Node.js。请先运行 setup。
+srvc_dsh_fail=未检测到 dsh 命令。请先运行 setup。
+srvc_install=在端口 {1} 安装 dsh web 服务...
+srvc_installed=dsh web 服务已安装: {1}
+srvc_exists=服务已安装: {1}
+srvc_uninstall=正在卸载 dsh web 服务...
+srvc_uninstalled=dsh web 服务已卸载
+srvc_not_installed=服务未安装
+srvc_running=服务正在运行: {1}
+srvc_stopped=服务已停止
+srvc_starting=正在启动服务...
+srvc_started=服务已启动: {1}
+srvc_stopping=正在停止服务...
+srvc_stopped_ok=服务已停止
+srvc_install_fail=服务安装失败: {1}
+srvc_uninstall_fail=服务卸载失败

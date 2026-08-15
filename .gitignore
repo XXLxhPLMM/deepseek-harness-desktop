@@ -2,6 +2,9 @@
 # 属运行时产物，不应提交
 nodejs/
 
+# 调试模式会把 dsh 隔离安装到脚本目录 (npm install -g --prefix 脚本目录)
+node_modules/
+
 # 下载的压缩包 (node-v*.zip/tar.gz 等运行时产物)
 *.zip
 *.tar.gz

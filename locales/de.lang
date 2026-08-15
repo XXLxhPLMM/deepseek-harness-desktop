@@ -1,9 +1,9 @@
-# Deutsches Sprachpaket - von setup-node.{sh,ps1,cmd} je nach Systemsprache geladen
+# Deutsches Sprachpaket - von setup.{sh,ps1,cmd} je nach Systemsprache geladen
 usage_usage=Verwendung: {1} [Optionen]
 usage_dir=  --dir <Pfad>   Installationsverzeichnis angeben (Standard: nodejs im Skriptordner)
 usage_noenv=  --no-env       PATH nicht ändern
 usage_dryrun=  --dry-run      nur prüfen, nicht installieren
-usage_debug=  --debug        Debug: nvm/node aus PATH entfernen, ins Skriptverzeichnis installieren
+usage_debug=  --debug        Debug: Umgebungsvariablen bereinigen, nur Skriptordner prüfen, dort installieren
 usage_help=  --help         Hilfe anzeigen
 usage_nopause=  /nopause       ohne Pause beenden (für Doppelklick)
 usage_prefix=  Argumente akzeptieren - , -- , / Präfixe (z. B. --help oder /help)
@@ -38,7 +38,7 @@ debug_scan=Debug-Modus: suche nvm / node Einträge im PATH...
 removing=  Entferne: {1}
 removed=nvm/node-Einträge aus dem PATH der aktuellen Sitzung entfernt
 nothing_removed=Keine nvm / node Einträge im PATH der aktuellen Sitzung gefunden.
-main_title==== Node.js-Umgebungsprüfung und -installation ===
+main_title==== Umgebungsprüfung und -installation (nvm → node → dsh) ===
 debug_title==== Debug-Modus aktiviert: Installationsverzeichnis = {1} ===
 dryrun_skip=Modus --dry-run, Installation übersprungen
 debug_skip_nvm=Debug-Modus: nvm überspringen, offizieller Direkt-Download...
@@ -51,3 +51,68 @@ done=Fertig! Bitte öffnen Sie das Terminal erneut, um die Änderungen zu übern
 node_version=Aktuelle Node-Version: {1}
 nvm_install_fail=nvm install fehlgeschlagen. Netzwerk oder nvm-Konfiguration prüfen.
 install_failed=Node.js-Installation fehlgeschlagen. Netzwerk prüfen und erneut versuchen.
+nvm_found=nvm erkannt
+dsh_ok=dsh erkannt
+dsh_not_found=dsh nicht erkannt, installiere @deepseek-ai/dsh global ...
+dsh_install=npm install -g @deepseek-ai/dsh ...
+dsh_install_local=Debug-Modus: dsh ins Skriptverzeichnis installieren...
+dsh_done=dsh global installiert
+dsh_fail=dsh-Installation fehlgeschlagen: {1}
+
+# --- gemeinsame Schlüssel für start-harness.{sh,ps1,cmd} (Präfix sh_) ---
+sh_usage=Verwendung: {1} [Optionen]
+sh_usage_debug=  --debug        Debug: nodejs im Skriptordner verwenden
+sh_usage_help=  --help         Hilfe anzeigen
+sh_title==== deepseek harness-Startprogramm ===
+sh_node_ok=Node.js {1} bereit
+sh_node_missing=Node.js nicht erkannt, setup-node wird zur Installation aufgerufen...
+sh_node_local=Debug: nodejs im Skriptordner verwenden: {1}
+sh_node_fail=Einrichtung der Node.js-Umgebung fehlgeschlagen
+sh_dsh_ok=dsh erkannt
+sh_dsh_missing=dsh nicht erkannt, installiere @deepseek-ai/dsh global ...
+sh_dsh_install=npm install -g @deepseek-ai/dsh ...
+sh_dsh_done=dsh global installiert
+sh_dsh_fail=dsh-Installation fehlgeschlagen: {1}
+sh_service_check=Prüfe dsh-Dienst: {1} ...
+sh_service_running=dsh-Dienst läuft bereits: {1}
+sh_service_start=Starte dsh-Dienst...
+sh_service_wait=Warte auf Dienst...
+sh_service_ready=dsh-Dienst bereit: {1}
+sh_service_fail=Dienst konnte nicht bestätigt werden, bitte {1} manuell aufrufen
+sh_browser=Öffne Browser: {1}
+sh_browser_fail=Browser konnte nicht automatisch geöffnet werden, bitte {1} manuell aufrufen
+sh_unknown=Unbekanntes Argument: {1}
+sh_usage_nopause=  /nopause       ohne Pause beenden (für Doppelklick)
+
+# --- gemeinsame Schlüssel für server-service.{sh,ps1,cmd} (Präfix srvc_) ---
+srvc_title==== deepseek harness-Dienst (dsh web) ===
+srvc_usage=Verwendung: {1} <install|uninstall|status|start|stop> [Optionen]
+srvc_usage_action=  install        Dienst registrieren und starten
+srvc_usage_uninstall=  uninstall      Dienst entfernen
+srvc_usage_status=  status         Dienststatus anzeigen
+srvc_usage_start=  start          Dienst starten
+srvc_usage_stop=  stop           Dienst stoppen
+srvc_usage_debug=  --debug        Debug: nodejs/dsh im Skriptordner verwenden
+srvc_usage_help=  --help         Hilfe anzeigen
+srvc_usage_nopause=  /nopause       ohne Pause beenden (für Doppelklick)
+srvc_usage_port=--port <Port>   Dienstport (Standard: {1})
+srvc_usage_host=--host <Host>   Bindungsadresse
+srvc_unknown_action=Unbekannte Aktion: {1}
+srvc_no_admin={1} erfordert Administrator-/root-Rechte.
+srvc_win_hint=Verwenden Sie unter Windows stattdessen server-service.ps1 (PowerShell) oder server-service.cmd.
+srvc_node_fail=Node.js nicht gefunden. Führen Sie zuerst setup aus.
+srvc_dsh_fail=dsh-Befehl nicht gefunden. Führen Sie zuerst setup aus.
+srvc_install=Installiere dsh web-Dienst auf Port {1}...
+srvc_installed=dsh web-Dienst installiert: {1}
+srvc_exists=Dienst bereits installiert: {1}
+srvc_uninstall=Entferne dsh web-Dienst...
+srvc_uninstalled=dsh web-Dienst entfernt
+srvc_not_installed=Dienst ist nicht installiert
+srvc_running=Dienst läuft: {1}
+srvc_stopped=Dienst ist gestoppt
+srvc_starting=Starte Dienst...
+srvc_started=Dienst gestartet: {1}
+srvc_stopping=Stoppe Dienst...
+srvc_stopped_ok=Dienst gestoppt
+srvc_install_fail=Dienstinstallation fehlgeschlagen: {1}
+srvc_uninstall_fail=Dienstentfernung fehlgeschlagen

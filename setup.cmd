@@ -1,19 +1,22 @@
 @echo off
 rem ============================================================================
-rem  setup-node.cmd  -  Windows cmd native installer for Node.js 22+
+rem  setup.cmd  -  Windows cmd native setup for the whole toolchain
+rem
+rem  Detects/installs nvm -> node -> dsh level by level. Refuses to reinstall
+rem  anything that is already present. This script only does detection/install.
 rem
 rem  Pure cmd implementation, does NOT require PowerShell.
 rem  Detects Node.js >= 22, installs via nvm if available, otherwise downloads
-rem  from nodejs.org and extracts to the script directory.
+rem  from nodejs.org and extracts to the script directory. Installs dsh via npm.
 rem
 rem  Usage:
-rem    setup-node.cmd                default install dir (script dir\nodejs)
-rem    setup-node.cmd --dir C:\path  custom install dir
-rem    setup-node.cmd --no-env       do not modify PATH
-rem    setup-node.cmd --dry-run      detect only, do not install
-rem    setup-node.cmd --debug        isolated verification install
-rem    setup-node.cmd --help         show help
-rem    setup-node.cmd /nopause       exit without pausing (for double-click)
+rem    setup.cmd                default install dir (script dir\nodejs)
+rem    setup.cmd --dir C:\path  custom install dir
+rem    setup.cmd --no-env       do not modify PATH
+rem    setup.cmd --dry-run      detect only, do not install
+rem    setup.cmd --debug        isolated verification install into script dir
+rem    setup.cmd --help         show help
+rem    setup.cmd /nopause       exit without pausing (for double-click)
 rem
 rem  i18n: load locales/{zh,en,ja,ko,fr,de,es}.lang by system language,
 rem       default to Chinese (zh) when undetectable. Use:
@@ -40,6 +43,7 @@ set "NVM_VERSION=22.23.2"
 set "MIN_MAJOR=22"
 set "BASE_URL=https://nodejs.org/dist"
 set "SELF=%~nx0"
+set "DSH_PKG=@deepseek-ai/dsh"
 
 rem ---- defaults ----
 set "INSTALL_DIR=%SCRIPT_DIR%nodejs"
@@ -47,6 +51,7 @@ set "DO_ENV=1"
 set "DRY_RUN=0"
 set "DEBUG_MODE=0"
 set "NO_PAUSE=0"
+set "EXIT_CODE=0"
 
 rem ---- switch console to UTF-8 (after language detection above) ----
 chcp 65001 >nul 2>nul
@@ -92,77 +97,57 @@ goto :parse
 
 if "%HAS_DIR%"=="1" set "INSTALL_DIR=%ARG_DIR%"
 
+rem ============================================================================
+rem  Main flow: nvm -> node -> dsh (refuse duplicate install)
+rem ============================================================================
+call :msg main_title
+echo [INFO] !M!
+
 if "%DEBUG_MODE%"=="1" (
     call :msg debug_title "%INSTALL_DIR%"
     echo [INFO] !M!
     call :remove_node_from_path
+    set "INSTALL_DIR=%SCRIPT_DIR%nodejs"
 )
 
-rem ---- detect existing Node ----
-call :detect_node
-if errorlevel 2 exit /b 0
-if errorlevel 1 goto :need_install
-
-:already_ok
-exit /b 0
-
-:need_install
-if "%DRY_RUN%"=="1" (
-    call :msg dryrun_skip
-    echo [INFO] !M!
-    exit /b 1
-)
-
-rem ---- choose install path ----
-if "%DEBUG_MODE%"=="1" (
-    call :msg debug_skip_nvm
-    echo [INFO] !M!
-    call :download_and_extract
-    if errorlevel 1 goto :install_failed
-    goto :env_setup
-)
-
-rem ---- try nvm ----
+rem ---- level 1: nvm (detect only, never install) ----
 call :detect_nvm
-if errorlevel 1 goto :no_nvm
+if not errorlevel 1 (
+    call :msg nvm_found
+    echo [OK]    !M!
+)
 
-call :msg nvm_using "%NVM_VERSION%"
-echo [INFO] !M!
-call :nvm_install
+rem ---- level 2: node (skip if already ok) ----
+call :ensure_node
 if errorlevel 1 (
-    call :msg nvm_fail_fallback
-    echo [WARN] !M!
-    goto :no_nvm
+    set "EXIT_CODE=1"
+    goto :finish
 )
-set "INSTALLED_BY_NVM=1"
-goto :env_setup
 
-:no_nvm
-call :msg no_nvm
-echo [INFO] !M!
-call :download_and_extract
-if errorlevel 1 goto :install_failed
-
-:install_failed
-call :msg install_failed
-echo [ERROR] !M!
-exit /b 1
-
-:env_setup
-if "%DEBUG_MODE%"=="1" (
-    call :msg debug_session_only
-    echo [INFO] !M!
-    set "PATH=%INSTALL_DIR%;%PATH%"
-    goto :done
+rem ---- level 3: dsh (skip if already ok) ----
+call :ensure_dsh
+if errorlevel 1 (
+    set "EXIT_CODE=1"
+    goto :finish
 )
-if "%DO_ENV%"=="0" (
-    call :msg noenv_skip
-    echo [INFO] !M!
-    call :msg noenv_manual "%INSTALL_DIR%"
-    echo [WARN] !M!
-    goto :done
+set "EXIT_CODE=0"
+rem ---- environment (only when node was installed) ----
+if "%NODE_INSTALLED%"=="1" (
+    if "%DEBUG_MODE%"=="1" (
+        call :msg debug_session_only
+        echo [INFO] !M!
+        set "PATH=%INSTALL_DIR%;%PATH%"
+        goto :done
+    )
+    if "%DO_ENV%"=="0" (
+        call :msg noenv_skip
+        echo [INFO] !M!
+        call :msg noenv_manual "%INSTALL_DIR%"
+        echo [WARN] !M!
+        goto :done
+    )
+    call :configure_env
 )
-call :configure_env
 
 :done
 echo.
@@ -193,15 +178,99 @@ set "M=!M:{2}=%~3!"
 :msg_ret
 exit /b 0
 
-rem ---- detect Node: errorlevel 2=already ok, 1=needs install ----
+rem ---- detect nvm: errorlevel 0=found, 1=not found ----
+:detect_nvm
+if "%DEBUG_MODE%"=="1" exit /b 1
+where nvm >nul 2>nul
+if not errorlevel 1 exit /b 0
+if defined NVM_HOME (
+    if exist "%NVM_HOME%\nvm.exe" exit /b 0
+)
+exit /b 1
+
+rem ---- ensure node is ready: errorlevel 0=ok, 1=failed ----
+rem Sets NODE_INSTALLED=1 when it actually installs a fresh node.
+:ensure_node
+set "NODE_INSTALLED=0"
+call :detect_node
+if not errorlevel 1 exit /b 0
+if "%DRY_RUN%"=="1" (
+    call :msg dryrun_skip
+    echo [INFO] !M!
+    exit /b 1
+)set "NODE_DONE=0"
+if "%DEBUG_MODE%"=="1" (
+    call :msg debug_skip_nvm
+    echo [INFO] !M!
+    call :download_and_extract
+    if errorlevel 1 (
+        call :msg install_failed
+        echo [ERROR] !M!
+        exit /b 1
+    )
+    set "NODE_DONE=1"
+    goto :node_installed
+)
+call :detect_nvm
+if not errorlevel 1 (
+    call :msg nvm_using "%NVM_VERSION%"
+    echo [INFO] !M!
+    call :nvm_install
+    if not errorlevel 1 (
+        set "NODE_DONE=1"
+        goto :node_installed
+    )
+    call :msg nvm_fail_fallback
+    echo [WARN] !M!
+)
+call :msg no_nvm
+echo [INFO] !M!
+call :download_and_extract
+if errorlevel 1 (
+    call :msg install_failed
+    echo [ERROR] !M!
+    exit /b 1
+)
+set "NODE_DONE=1"
+:node_installed
+set "NODE_INSTALLED=1"
+exit /b 0
+
+rem ---- ensure dsh is ready: errorlevel 0=ok, 1=failed ----
+:ensure_dsh
+call :detect_dsh
+if not errorlevel 1 exit /b 0
+if "%DRY_RUN%"=="1" (
+    call :msg dryrun_skip
+    echo [INFO] !M!
+    exit /b 1
+)
+call :install_dsh
+exit /b
+
+rem ---- detect node: errorlevel 0=ok (>=22), 1=missing/too old ----
 :detect_node
+set "NODE_VERSION="
+set "NODE_MAJOR="
+if "%DEBUG_MODE%"=="1" (
+    if exist "%INSTALL_DIR%\node.exe" (
+        set "PATH=%INSTALL_DIR%;%PATH%"
+        for /f "usebackq delims=" %%v in (`node --version 2^>nul`) do set "NV=%%v"
+        if defined NV (
+            set "NODE_VERSION=!NV:~1!"
+            for /f "tokens=1 delims=." %%m in ("!NODE_VERSION!") do set "NODE_MAJOR=%%m"
+            goto :node_version_done
+        )
+    )
+    goto :no_node
+)
 where node >nul 2>nul
 if errorlevel 1 goto :no_node
 for /f "usebackq delims=" %%v in (`node --version 2^>nul`) do set "NV=%%v"
 if not defined NV goto :no_node
 set "NODE_VERSION=%NV:~1%"
-set "MAJOR=%NV:~1%"
-for /f "tokens=1 delims=." %%m in ("%MAJOR%") do set "NODE_MAJOR=%%m"
+for /f "tokens=1 delims=." %%m in ("%NODE_VERSION%") do set "NODE_MAJOR=%%m"
+:node_version_done
 if not defined NODE_MAJOR goto :no_node
 if %NODE_MAJOR% GEQ %MIN_MAJOR% goto :node_ok
 call :msg node_low "%NODE_VERSION%" "%MIN_MAJOR%"
@@ -210,19 +279,10 @@ exit /b 1
 :node_ok
 call :msg node_ok "%NODE_VERSION%" "%MIN_MAJOR%"
 echo [OK]    !M!
-exit /b 2
+exit /b 0
 :no_node
 call :msg node_not_found
 echo [INFO] !M!
-exit /b 1
-
-rem ---- detect nvm ----
-:detect_nvm
-where nvm >nul 2>nul
-if not errorlevel 1 exit /b 0
-if defined NVM_HOME (
-    if exist "%NVM_HOME%\nvm.exe" exit /b 0
-)
 exit /b 1
 
 rem ---- nvm install ----
@@ -355,6 +415,66 @@ if exist "%INSTALL_DIR%\node.exe" (
     exit /b 0
 )
 
+rem ---- detect dsh: errorlevel 0=found, 1=not found ----
+:detect_dsh
+set "DSH_FOUND=0"
+if "%DEBUG_MODE%"=="1" (
+    if exist "%SCRIPT_DIR%dsh.cmd" set "DSH_FOUND=1"
+    if exist "%SCRIPT_DIR%dsh.exe" set "DSH_FOUND=1"
+    if "%DSH_FOUND%"=="1" (
+        set "PATH=%SCRIPT_DIR%;%PATH%"
+        call :msg dsh_ok
+        echo [OK]    !M!
+        exit /b 0
+    )
+    exit /b 1
+)
+where dsh >nul 2>nul
+if not errorlevel 1 (
+    call :msg dsh_ok
+    echo [OK]    !M!
+    exit /b 0
+)
+exit /b 1
+
+rem ---- install dsh ----
+:install_dsh
+if "%DEBUG_MODE%"=="1" (
+    call :msg dsh_install_local
+    echo [INFO] !M!
+    rem strip trailing backslash from SCRIPT_DIR so the closing quote is not escaped
+    set "D_DIR=%SCRIPT_DIR:~0,-1%"
+    npm install -g --prefix "%D_DIR%" "%DSH_PKG%"
+    if errorlevel 1 goto :dsh_fail
+    set "PATH=%SCRIPT_DIR%;%PATH%"
+    exit /b 0
+)
+call :msg dsh_not_found
+echo [INFO] !M!
+call :msg dsh_install
+echo [INFO] !M!
+npm install -g "%DSH_PKG%"
+if errorlevel 1 goto :dsh_fail
+rem refresh PATH if npm global dir is not on it yet
+set "DSH_FOUND="
+where dsh >nul 2>nul && set "DSH_FOUND=1"
+if not defined DSH_FOUND if exist "%APPDATA%\npm\dsh.cmd" (
+    set "PATH=%APPDATA%\npm;%PATH%"
+    set "DSH_FOUND=1"
+)
+if not defined DSH_FOUND if exist "%SCRIPT_DIR%nodejs\dsh.cmd" (
+    set "PATH=%SCRIPT_DIR%nodejs;%PATH%"
+    set "DSH_FOUND=1"
+)
+if not defined DSH_FOUND goto :dsh_fail
+call :msg dsh_done
+echo [OK]    !M!
+exit /b 0
+:dsh_fail
+call :msg dsh_fail "%DSH_PKG%"
+echo [ERROR] !M!
+exit /b 1
+
 rem ---- configure PATH (user + current session) ----
 :configure_env
 call :msg env_writing
@@ -427,8 +547,9 @@ call :msg usage_nopause & echo !M!
 exit /b 0
 
 :finish
-if "%NO_PAUSE%"=="1" exit /b 0
+if not defined EXIT_CODE set "EXIT_CODE=0"
+if "%NO_PAUSE%"=="1" exit /b %EXIT_CODE%
 echo.
 echo Press any key to close this window...
 pause >nul
-exit /b 0
+exit /b %EXIT_CODE%

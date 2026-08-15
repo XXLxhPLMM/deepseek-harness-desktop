@@ -1,23 +1,27 @@
-﻿# setup-node.ps1
-# 检测当前环境是否有 Node.js 22+，如果没有则自动安装，并配置环境变量。
+﻿# setup.ps1
+# 检测/安装整条工具链: nvm → node → dsh。逐级检查, 拒绝重复安装。
+# 只做一件事: 检测当前环境缺什么, 补装什么。
 # Windows 原生 PowerShell 脚本。
 #
 # 安装策略:
-#   1) 若已安装 nvm (nvm-windows)，优先使用 nvm 安装 Node 22。
+#   1) nvm 只检测/使用 (不安装), 有则优先用 nvm 安装 Node 22。
 #   2) 否则从 nodejs.org 官方下载 zip 安装到 -Dir (默认脚本目录下的 nodejs)。
+#   3) dsh 缺失则 npm install -g @deepseek-ai/dsh (调试模式装到脚本目录)。
 #
 # 用法:
-#   powershell -ExecutionPolicy Bypass -File setup-node.ps1
-#   powershell -ExecutionPolicy Bypass -File setup-node.ps1 -Dir "D:\envs\node"
-#   powershell -ExecutionPolicy Bypass -File setup-node.ps1 -NoEnv
-#   powershell -ExecutionPolicy Bypass -File setup-node.ps1 -DryRun
+#   powershell -ExecutionPolicy Bypass -File setup.ps1
+#   powershell -ExecutionPolicy Bypass -File setup.ps1 -Dir "D:\envs\node"
+#   powershell -ExecutionPolicy Bypass -File setup.ps1 -NoEnv
+#   powershell -ExecutionPolicy Bypass -File setup.ps1 -DryRun
+#   powershell -ExecutionPolicy Bypass -File setup.ps1 -Debug
 #
 # 参数:
-#   -Dir <路径>   指定安装目录 (默认: 脚本目录下的 nodejs)
+#   -Dir <路径>   指定 node 安装目录 (默认: 脚本目录下的 nodejs)
 #   -NoEnv        不修改 PATH 环境变量
 #   -DryRun       只检测, 不下载安装
+#   -Debug        调试模式: 清理环境变量, 只检查脚本目录, 安装到脚本目录
 #
-# 多语言: 提示/日志根据系统语言自动加载 locales/{zh,en}.lang,
+# 多语言: 提示/日志根据系统语言自动加载 locales/{zh,en,...}.lang,
 #         消息以 msg <键> [参数...] 查找, {1}/{2} 为占位符按序替换。
 
 # ---------- 控制台 UTF-8 (确保中文在 cmd/PowerShell 窗口正常显示) ----------
@@ -32,6 +36,7 @@ $Script:VVersion  = "v22.23.2"     # 官方下载用 v 前缀
 $Script:MinMajor  = 22
 $Script:BaseUrl   = "https://nodejs.org/dist"
 $Script:ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$Script:DshPkg    = "@deepseek-ai/dsh"
 
 # ---------- 语言检测 (决定提示/日志语言: zh/zh-TW/en/ja/ko/fr/de/es, 检测不到默认中文) ----------
 # 用 InstalledUICulture (系统安装的 UI 语言, 不受 chcp 影响; CurrentUICulture 在
@@ -132,7 +137,7 @@ if ($ArgDir) {
 # ---------- 帮助 ----------
 function Show-Usage {
     # 提示: 用法 / -Dir / -NoEnv / -DryRun / -Debug / -Help / 参数前缀说明
-    Write-Host (msg usage_usage "powershell -ExecutionPolicy Bypass -File setup-node.ps1")
+    Write-Host (msg usage_usage "powershell -ExecutionPolicy Bypass -File setup.ps1")
     Write-Host (msg usage_dir)
     Write-Host (msg usage_noenv)
     Write-Host (msg usage_dryrun)
@@ -144,12 +149,33 @@ function Show-Usage {
 
 if ($ArgHelp) { Show-Usage }
 
-# ---------- 检测 Node ----------
+# ---------- 第 1 级: 检测 nvm (只检测/使用, 不安装) ----------
+function Test-Nvm {
+    # 调试模式: 只检查脚本目录, 判定无 nvm
+    if ($ArgDebug) { return $false }
+    $nvmCmd = Get-Command nvm -ErrorAction SilentlyContinue
+    if ($nvmCmd) { return $true }
+    if ($env:NVM_HOME) { return $true }
+    if (Test-Path (Join-Path $env:NVM_HOME "nvm.exe")) { return $true }
+    return $false
+}
+
+# ---------- 第 2 级: 检测 Node (>= MinMajor) ----------
+# 普通模式: 检测 PATH 上的 node。调试模式: 只检查脚本目录下的 InstallDir。
 function Test-Node {
-    $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+    $nodeCmd = $null
+    if ($ArgDebug) {
+        $nodePath = Join-Path $Script:InstallDir "node.exe"
+        if (Test-Path $nodePath) {
+            $nodeCmd = $nodePath
+            $env:Path = "$($Script:InstallDir);$env:Path"
+        }
+    } else {
+        $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+    }
     if ($nodeCmd) {
         try {
-            $version = (node --version 2>$null).TrimStart("v")
+            $version = (& $nodeCmd --version 2>$null).TrimStart("v")
             if ($version) {
                 $major = ($version -split "\.")[0]
                 if ([int]$major -ge $Script:MinMajor) {
@@ -166,15 +192,6 @@ function Test-Node {
     }
     # 提示: 未检测到 Node.js，开始安装...
     Write-Info (msg node_not_found)
-    return $false
-}
-
-# ---------- 检测 nvm (nvm-windows) ----------
-function Test-Nvm {
-    $nvmCmd = Get-Command nvm -ErrorAction SilentlyContinue
-    if ($nvmCmd) { return $true }
-    if ($env:NVM_HOME) { return $true }
-    if (Test-Path (Join-Path $env:NVM_HOME "nvm.exe")) { return $true }
     return $false
 }
 
@@ -274,6 +291,75 @@ function Install-Node-Direct {
     }
 }
 
+# ---------- 第 3 级: 检测/安装 dsh ----------
+# 普通模式: 检测 PATH 上的 dsh。调试模式: 只检查脚本目录。
+function Test-Dsh {
+    if ($ArgDebug) {
+        foreach ($cand in @(
+            (Join-Path $Script:ScriptDir "node_modules\.bin\dsh"),
+            (Join-Path $Script:ScriptDir "bin\dsh"),
+            (Join-Path $Script:ScriptDir "dsh"),
+            (Join-Path $Script:ScriptDir "dsh.cmd")
+        )) {
+            if (Test-Path $cand) {
+                $dir = Split-Path -Parent $cand
+                $env:Path = "$dir;$env:Path"
+                if (Get-Command dsh -ErrorAction SilentlyContinue) {
+                    Write-Ok (msg dsh_ok)
+                    return $true
+                }
+            }
+        }
+        return $false
+    }
+    if (Get-Command dsh -ErrorAction SilentlyContinue) {
+        Write-Ok (msg dsh_ok)
+        return $true
+    }
+    return $false
+}
+
+function Install-Dsh {
+    if ($ArgDebug) {
+        # 调试模式: 安装到脚本目录 (隔离, 不碰用户全局)
+        # 提示: 调试模式: 安装 dsh 到脚本目录...
+        Write-Info (msg dsh_install_local)
+        $localDir = $Script:ScriptDir
+        $pkg = $Script:DshPkg
+        & npm install -g --prefix $localDir $pkg
+        if ($LASTEXITCODE -ne 0) {
+            Write-Fail (msg dsh_fail $pkg)
+            return $false
+        }
+        $env:Path = "$localDir;$env:Path"
+        return $true
+    }
+    # 普通模式: 全局安装
+    # 提示: 未检测到 dsh，开始全局安装 @deepseek-ai/dsh ...
+    Write-Info (msg dsh_not_found)
+    Write-Info (msg dsh_install)
+    & npm install -g $Script:DshPkg
+    if ($LASTEXITCODE -ne 0) {
+        Write-Fail (msg dsh_fail $Script:DshPkg)
+        return $false
+    }
+    # npm 全局 bin 可能不在当前 PATH, 尝试补全
+    if (-not (Get-Command dsh -ErrorAction SilentlyContinue)) {
+        try {
+            $prefix = npm prefix -g 2>$null
+            if ($prefix) {
+                $env:Path = "$prefix;$env:Path"
+            }
+        } catch { }
+    }
+    if (Get-Command dsh -ErrorAction SilentlyContinue) {
+        Write-Ok (msg dsh_done)
+        return $true
+    }
+    Write-Fail (msg dsh_fail $Script:DshPkg)
+    return $false
+}
+
 # ---------- 配置环境变量 (Windows 用户 PATH) ----------
 function Set-NodeEnv {
     # 提示: 写入环境变量配置...
@@ -325,61 +411,87 @@ function Remove-NodeFromPath {
 
 # ---------- 主流程 ----------
 function Main {
-    # 提示: === Node.js 环境检测与安装 ===
+    # 提示: === 环境检测与安装 ===
     Write-Info (msg main_title)
 
     if ($ArgDebug) {
         # 提示: === 调试模式启用: 安装目录 = <dir> ===
         Write-Info (msg debug_title $Script:InstallDir)
         Remove-NodeFromPath
+        # 调试模式: 强制安装到脚本目录, 只检查脚本目录
+        $Script:InstallDir = Join-Path $Script:ScriptDir "nodejs"
     }
 
-    if (Test-Node) { exit 0 }
-
-    if ($ArgDryRun) {
-        # 提示: --dry-run 模式，跳过安装
-        Write-Info (msg dryrun_skip)
-        exit 1
+    # ---- 第 1 级: nvm (只检测, 不安装) ----
+    $nvmFound = Test-Nvm
+    if ($nvmFound) {
+        Write-Ok (msg nvm_found)
     }
 
-    $ok = $false
-    if ($ArgDebug) {
-        # 调试模式不走 nvm, 强制官方下载以隔离验证
-        # 提示: 调试模式: 跳过 nvm，直接官方下载...
-        Write-Info (msg debug_skip_nvm)
-        $ok = Install-Node-Direct
-    } elseif (Test-Nvm) {
-        $ok = Install-Node-With-Nvm
-        if (-not $ok) {
-            # 提示: nvm 安装失败，回退到官方下载方式...
-            Write-Warn (msg nvm_fail_fallback)
-            $ok = Install-Node-Direct
+    # ---- 第 2 级: node (已就绪则跳过, 拒绝重复安装) ----
+    $nodeInstalled = $false
+    if (-not (Test-Node)) {
+        if ($ArgDryRun) {
+            # 提示: --dry-run 模式，跳过安装
+            Write-Info (msg dryrun_skip)
+            exit 1
         }
-    } else {
-        # 提示: 未检测到 nvm，使用官方下载方式...
-        Write-Info (msg no_nvm)
-        $ok = Install-Node-Direct
-    }
 
-    if (-not $ok) {
-        # 提示: Node.js 安装失败，请检查网络后重试。
-        Write-Fail (msg install_failed)
-        exit 1
-    }
-
-    if ($ArgNoEnv -or $ArgDebug) {
+        $nodeDone = $false
         if ($ArgDebug) {
-            # 提示: 调试模式: 仅更新当前会话 PATH，不写用户持久化 PATH
-            Write-Info (msg debug_session_only)
-            $env:Path = "$Script:InstallDir;$env:Path"
+            # 调试模式不走 nvm, 强制官方下载以隔离验证
+            # 提示: 调试模式: 跳过 nvm，直接官方下载...
+            Write-Info (msg debug_skip_nvm)
+            $nodeDone = Install-Node-Direct
+        } elseif ($nvmFound) {
+            $nodeDone = Install-Node-With-Nvm
+            if (-not $nodeDone) {
+                # 提示: nvm 安装失败，回退到官方下载方式...
+                Write-Warn (msg nvm_fail_fallback)
+                $nodeDone = Install-Node-Direct
+            }
         } else {
-            # 提示: --no-env 已指定，跳过环境变量配置
-            Write-Info (msg noenv_skip)
-            # 提示: 请手动将 <dir> 加入 PATH
-            Write-Warn (msg noenv_manual $Script:InstallDir)
+            # 提示: 未检测到 nvm，使用官方下载方式...
+            Write-Info (msg no_nvm)
+            $nodeDone = Install-Node-Direct
         }
-    } else {
-        Set-NodeEnv
+
+        if (-not $nodeDone) {
+            # 提示: Node.js 安装失败，请检查网络后重试。
+            Write-Fail (msg install_failed)
+            exit 1
+        }
+        $nodeInstalled = $true
+    }
+
+    # ---- 第 3 级: dsh (已就绪则跳过, 拒绝重复安装) ----
+    if (-not (Test-Dsh)) {
+        if ($ArgDryRun) {
+            # 提示: --dry-run 模式，跳过安装
+            Write-Info (msg dryrun_skip)
+            exit 1
+        }
+        if (-not (Install-Dsh)) {
+            exit 1
+        }
+    }
+
+    # ---- 环境变量 (仅当实际安装了 node 时才需要配置) ----
+    if ($nodeInstalled) {
+        if ($ArgNoEnv -or $ArgDebug) {
+            if ($ArgDebug) {
+                # 提示: 调试模式: 仅更新当前会话 PATH，不写用户持久化 PATH
+                Write-Info (msg debug_session_only)
+                $env:Path = "$Script:InstallDir;$env:Path"
+            } else {
+                # 提示: --no-env 已指定，跳过环境变量配置
+                Write-Info (msg noenv_skip)
+                # 提示: 请手动将 <dir> 加入 PATH
+                Write-Warn (msg noenv_manual $Script:InstallDir)
+            }
+        } else {
+            Set-NodeEnv
+        }
     }
 
     Write-Host ""
