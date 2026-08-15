@@ -227,6 +227,9 @@ After=network.target
 
 [Service]
 Type=simple
+# 服务固定使用注册用户的 dsh 数据根 (~/.dsh), 避免以 root/SYSTEM 运行
+# 时 homedir 不同导致看不到用户会话
+Environment="DSH_HOME=$HOME/.dsh"
 ExecStart=$NODE_PATH "$DSH_CLI" web --port "$PORT" --host "$HOST"
 Restart=always
 RestartSec=3

@@ -139,7 +139,7 @@ if not errorlevel 1 (
 ) else (
     call :msg srvc_install "%PORT%"
     echo [INFO] !M!
-    set "BINPATH=\"%NODE_EXE%\" \"%DSH_CLI%\" web --port %PORT% --host %HOST%"
+    set "BINPATH=cmd /c set \"DSH_HOME=%USERPROFILE%\.dsh\" && \"%NODE_EXE%\" \"%DSH_CLI%\" web --port %PORT% --host %HOST%"
     schtasks /create /tn "%SVC_NAME%" /tr "!BINPATH!" /sc onstart /ru SYSTEM /rl highest /f >nul 2>nul
     if errorlevel 1 (
         call :msg srvc_install_fail "%SVC_NAME%"

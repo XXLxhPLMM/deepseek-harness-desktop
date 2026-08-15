@@ -206,7 +206,7 @@ function Install-Service {
         Write-Info (msg srvc_exists $Script:SvcName)
     } else {
         Write-Info (msg srvc_install $Script:Port)
-        $taskCmd = "\`"$($Script:NodePath)\`" \`"$($Script:DshCli)\`" web --port $($Script:Port) --host $($Script:BindHost)"
+        $taskCmd = "cmd /c set \`"DSH_HOME=$env:USERPROFILE\.dsh\`" && \`"$($Script:NodePath)\`" \`"$($Script:DshCli)\`" web --port $($Script:Port) --host $($Script:BindHost)"
         schtasks.exe /create /tn $Script:SvcName /tr $taskCmd /sc onstart /ru SYSTEM /rl highest /f
         if ($LASTEXITCODE -ne 0) { Write-Fail (msg srvc_install_fail $Script:SvcName); exit 1 }
         schtasks.exe /run /tn $Script:SvcName | Out-Null
