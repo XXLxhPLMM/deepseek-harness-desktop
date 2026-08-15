@@ -136,8 +136,11 @@ ensure_toolchain() {
 get_dsh_port() {
     local arg_port="$1" port_file port
     if [[ -n "$arg_port" ]]; then echo "$arg_port"; return; fi
-    # 从服务配置文件提取 --port
-    if [[ "$(uname -s)" == Linux && -f /etc/systemd/system/$SVC_NAME.service ]]; then
+    if is_mingw; then
+        # Windows: 从计划任务 dsh-web 配置提取
+        port="$(powershell -NoProfile -Command "$t=Get-ScheduledTask -TaskName '$SVC_NAME' -ErrorAction SilentlyContinue; if ($t) {$m=[regex]::Match($t.Actions.Arguments,'--port\s+(\d+)'); if ($m.Success) {Write-Output $m.Groups[1].Value}}" 2>/dev/null)"
+        if [[ -n "$port" ]]; then echo "$port"; return; fi
+    elif [[ "$(uname -s)" == Linux && -f /etc/systemd/system/$SVC_NAME.service ]]; then
         port_file="$(grep -o -- '--port [0-9]*' /etc/systemd/system/$SVC_NAME.service 2>/dev/null | grep -o '[0-9]*' | head -n1)"
         if [[ -n "$port_file" ]]; then echo "$port_file"; return; fi
     elif [[ "$(uname -s)" == Darwin && -f "/Library/LaunchDaemons/$MACOS_LABEL.plist" ]]; then
@@ -165,21 +168,17 @@ service_running() {
     return 1
 }
 
-# ---------- 启动 dsh 服务 (优先用已注册的服务, 无则后台直连) ----------
+# ---------- 启动 dsh 服务 (已注册的服务; 未注册则等待超时提示) ----------
 start_service() {
     info "$(msg sh_service_start)"
     local svc_script="$SCRIPT_DIR/server/server-service.sh"
     local os
     os="$(uname -s)"
-    if [[ -f "$svc_script" && ( "$os" == Linux || "$os" == Darwin ) ]]; then
+    if is_mingw; then
+        # Windows git-bash: 用计划任务直接启动 (MSYS_NO_PATHCONV 防止 /run 被转成路径)
+        MSYS_NO_PATHCONV=1 schtasks /run /tn "$SVC_NAME" >/dev/null 2>&1 || true
+    elif [[ -f "$svc_script" && ( "$os" == Linux || "$os" == Darwin ) ]]; then
         bash "$svc_script" start >/dev/null 2>&1 || true
-    fi
-    # 服务未注册或启动失败 -> 兜底: 后台直连 dsh web (脱离当前会话)
-    if ! service_up; then
-        if command -v dsh >/dev/null 2>&1; then
-            nohup dsh web --port "$PORT" >/dev/null 2>&1 &
-            disown 2>/dev/null || true
-        fi
     fi
     info "$(msg sh_service_wait)"
     local i

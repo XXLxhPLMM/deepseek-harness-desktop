@@ -156,16 +156,12 @@ function Test-PortUp {
     return $false
 }
 
-# ---------- 启动 dsh 服务 (优先用已注册的计划任务, 无则后台直连) ----------
+# ---------- 启动 dsh 服务 (已注册的计划任务; 未注册则等待超时提示) ----------
 function Start-DshService {
     Write-Info (msg sh_service_start)
     $svcScript = Join-Path $Script:ScriptDir "server\server-service.ps1"
     if (Test-Path $svcScript) {
         & $svcScript start 2>$null | Out-Null
-    }
-    # 任务不存在或启动失败 -> 兜底: 后台直连 dsh web
-    if (-not (Test-PortUp)) {
-        Start-Process -FilePath "dsh" -ArgumentList @("web", "--port", "$($Script:Port)") -WindowStyle Hidden -ErrorAction SilentlyContinue
     }
     Write-Info (msg sh_service_wait)
     for ($i = 0; $i -lt 30; $i++) {

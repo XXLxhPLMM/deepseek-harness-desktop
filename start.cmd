@@ -110,11 +110,11 @@ set "URL=http://localhost:%PORT%"
 
 rem ---- 3) detect whether the dsh service is running ----
 call :svc_running
-if not errorlevel 1 goto :service_running
+if "%RUNNING%"=="1" goto :service_running
 
-rem ---- start the service (scheduled task, fallback direct dsh) ----
+rem ---- start the service (scheduled task) ----
 call :start_service
-if not errorlevel 1 goto :service_ready
+if "%STARTED%"=="1" goto :service_ready
 
 call :msg sh_service_fail "%URL%"
 echo [WARN] !M!
@@ -172,13 +172,17 @@ set "TASK_PORT="
 for /f "usebackq delims=" %%a in (`powershell -NoProfile -Command "$t=Get-ScheduledTask -TaskName '%SVC_NAME%' -ErrorAction SilentlyContinue; if ($t) {$m=[regex]::Match($t.Actions.Arguments,'--port\s+(\d+)'); if ($m.Success) {Write-Output $m.Groups[1].Value}}"`) do set "TASK_PORT=%%a"
 exit /b 0
 
-rem ---- scheduled task running: errorlevel 0=running, 1=not ----
-rem Uses PowerShell (State enum is locale-independent).
+rem ---- service running (scheduled task or port): sets RUNNING=1/0 ----
+rem Uses PowerShell for task state (locale-independent). Results passed via a
+rem variable instead of errorlevel (errorlevel right after nested call is
+rem unreliable in cmd).
 :svc_running
+set "RUNNING=0"
 powershell -NoProfile -Command "$t=Get-ScheduledTask -TaskName '%SVC_NAME%' -ErrorAction SilentlyContinue; if ($t -and $t.State -eq 'Running'){exit 0}else{exit 1}" >nul 2>nul
-if not errorlevel 1 exit /b 0
-call :check_port
-exit /b
+if not errorlevel 1 set "RUNNING=1"
+netstat -ano 2>nul | findstr /C:":%PORT% " | findstr /C:"LISTENING" >nul
+if not errorlevel 1 set "RUNNING=1"
+exit /b 0
 
 rem ---- port listening: errorlevel 0=running, 1=not ----
 :check_port
@@ -186,29 +190,27 @@ netstat -ano 2>nul | findstr /C:":%PORT% " | findstr /C:"LISTENING" >nul
 if errorlevel 1 exit /b 1
 exit /b 0
 
-rem ---- start service (scheduled task, fallback direct dsh), poll port ----
+rem ---- start service (scheduled task), poll port; sets STARTED=1/0 ----
 :start_service
+set "STARTED=0"
 call :msg sh_service_start
 echo [INFO] !M!
-rem try the registered scheduled task first
-if exist "%SCRIPT_DIR%server\server-service.cmd" (
-    call "%SCRIPT_DIR%server\server-service.cmd" start /nopause >nul 2>nul
-)
-rem fallback: task missing/start failed -> spawn dsh web directly
-call :check_port
-if not errorlevel 1 goto :started
-if exist "%SCRIPT_DIR%nodejs\dsh.cmd" (
-    start "" "%SCRIPT_DIR%nodejs\dsh.cmd" web --port %PORT%
-) else (
-    start "" cmd /c "dsh web --port %PORT%"
-)
-:started
+rem try the registered scheduled task first (avoid call inside a paren block:
+rem cmd's block/goto context gets corrupted by the called script's labels)
+if exist "%SCRIPT_DIR%server\server-service.cmd" goto :svc_start
+goto :svc_start_done
+:svc_start
+call "%SCRIPT_DIR%server\server-service.cmd" start /nopause >nul 2>nul
+:svc_start_done
 call :msg sh_service_wait
 echo [INFO] !M!
 set "WAITED=0"
 :wait_loop
 call :check_port
-if not errorlevel 1 exit /b 0
+if not errorlevel 1 (
+    set "STARTED=1"
+    exit /b 0
+)
 set /a WAITED+=1
 if %WAITED% GEQ 30 exit /b 1
 ping -n 2 127.0.0.1 >nul
