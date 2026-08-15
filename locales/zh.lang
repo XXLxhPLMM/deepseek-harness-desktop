@@ -69,7 +69,7 @@ registry_set=已切换 npm 源到淘宝镜像: {1}
 registry_already=npm 源已是淘宝镜像: {1}
 registry_fail=设置 npm 源失败: {1}
 
-# --- start-harness.{sh,ps1,cmd} 共享键 (前缀 sh_) ---
+# --- start.{sh,ps1,cmd} 共享键 (前缀 sh_) ---
 sh_usage=用法: {1} [选项]
 sh_usage_debug=  --debug        调试模式: 使用脚本目录下的 nodejs
 sh_usage_help=  --help         显示帮助
@@ -93,6 +93,9 @@ sh_browser=正在打开浏览器: {1}
 sh_browser_fail=自动打开浏览器失败，请手动访问 {1}
 sh_unknown=未知参数: {1}
 sh_usage_nopause=  /nopause       退出时不暂停窗口 (双击运行时用)
+sh_setup_run=运行 setup 确保工具链就绪...
+sh_setup_fail=setup 执行失败
+sh_port_using=dsh 服务端口: {1}
 
 # --- server-service.{sh,ps1,cmd} 共享键 (前缀 srvc_) ---
 srvc_title==== deepseek harness 服务 (dsh web) ===

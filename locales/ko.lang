@@ -69,7 +69,7 @@ registry_set=npm 레지스트리를 타오바오 미러로 전환했습니다: {
 registry_already=npm 레지스트리가 이미 타오바오 미러입니다: {1}
 registry_fail=npm 레지스트리 설정 실패: {1}
 
-# --- start-harness.{sh,ps1,cmd} 공유 키 (접두사 sh_) ---
+# --- start.{sh,ps1,cmd} 공유 키 (접두사 sh_) ---
 sh_usage=사용법: {1} [옵션]
 sh_usage_debug=  --debug        디버그: 스크립트 폴더의 nodejs 사용
 sh_usage_help=  --help         도움말 표시
@@ -93,6 +93,9 @@ sh_browser=브라우저 열기: {1}
 sh_browser_fail=브라우저를 자동으로 열지 못했습니다. {1} 을(를) 수동으로 방문하세요
 sh_unknown=알 수 없는 인수: {1}
 sh_usage_nopause=  /nopause       종료 시 일시정지하지 않음 (더블클릭 실행용)
+sh_setup_run=setup 을 실행하여 도구 모음을 준비 중...
+sh_setup_fail=setup 실행 실패
+sh_port_using=dsh 서비스 포트: {1}
 
 # --- server-service.{sh,ps1,cmd} 공유 키 (접두사 srvc_) ---
 srvc_title==== deepseek harness 서비스 (dsh web) ===

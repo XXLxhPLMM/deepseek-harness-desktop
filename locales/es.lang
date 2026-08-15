@@ -69,7 +69,7 @@ registry_set=Registro npm cambiado al espejo de Taobao: {1}
 registry_already=El registro npm ya es el espejo de Taobao: {1}
 registry_fail=Error al configurar el registro npm: {1}
 
-# --- claves compartidas para start-harness.{sh,ps1,cmd} (prefijo sh_) ---
+# --- claves compartidas para start.{sh,ps1,cmd} (prefijo sh_) ---
 sh_usage=Uso: {1} [opciones]
 sh_usage_debug=  --debug        depuración: usar nodejs del directorio del script
 sh_usage_help=  --help         mostrar ayuda
@@ -93,6 +93,9 @@ sh_browser=Abriendo navegador: {1}
 sh_browser_fail=No se pudo abrir el navegador automáticamente, visite {1} manualmente
 sh_unknown=Argumento desconocido: {1}
 sh_usage_nopause=  /nopause       no pausar al salir (para doble clic)
+sh_setup_run=Ejecutando setup para preparar el conjunto de herramientas...
+sh_setup_fail=Error al ejecutar setup
+sh_port_using=Puerto del servicio dsh: {1}
 
 # --- claves compartidas para server-service.{sh,ps1,cmd} (prefijo srvc_) ---
 srvc_title==== Servicio de deepseek harness (dsh web) ===

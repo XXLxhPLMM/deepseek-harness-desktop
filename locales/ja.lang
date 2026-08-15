@@ -69,7 +69,7 @@ registry_set=npm レジストリを淘宝ミラーに切り替えました: {1}
 registry_already=npm レジストリは既に淘宝ミラーです: {1}
 registry_fail=npm レジストリの設定に失敗: {1}
 
-# --- start-harness.{sh,ps1,cmd} 共有キー (接頭辞 sh_) ---
+# --- start.{sh,ps1,cmd} 共有キー (接頭辞 sh_) ---
 sh_usage=使用方法: {1} [オプション]
 sh_usage_debug=  --debug        デバッグ: スクリプト配下の nodejs を使用
 sh_usage_help=  --help         ヘルプを表示
@@ -93,6 +93,9 @@ sh_browser=ブラウザを開いています: {1}
 sh_browser_fail=ブラウザを自動で開けませんでした。手動で {1} にアクセスしてください
 sh_unknown=不明な引数: {1}
 sh_usage_nopause=  /nopause       終了時に一時停止しない (ダブルクリック用)
+sh_setup_run=setup を実行してツールチェーンを準備中...
+sh_setup_fail=setup の実行に失敗
+sh_port_using=dsh サービスのポート: {1}
 
 # --- server-service.{sh,ps1,cmd} 共通キー (接頭辞 srvc_) ---
 srvc_title==== deepseek harness サービス (dsh web) ===

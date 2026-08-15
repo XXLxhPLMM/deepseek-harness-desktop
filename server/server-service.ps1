@@ -17,7 +17,7 @@
 #
 # 注意: install/uninstall 需要管理员权限 (schtasks /create / /delete)。
 #
-# 多语言: 与 setup/start-harness 共用 locales/, 键前缀 srvc_。
+# 多语言: 与 setup/start 共用 locales/, 键前缀 srvc_。
 
 # ---------- 控制台 UTF-8 ----------
 try {

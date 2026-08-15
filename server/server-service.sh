@@ -20,7 +20,7 @@
 #
 # 兼容: macOS / Linux。Windows 请用 server-service.ps1 / server-service.cmd。
 #
-# 多语言: 与 setup/start-harness 共用 locales/, 键前缀 srvc_。
+# 多语言: 与 setup/start 共用 locales/, 键前缀 srvc_。
 # 注意: install/uninstall 需要 root/sudo 权限。
 
 set -euo pipefail

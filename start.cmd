@@ -1,20 +1,21 @@
 @echo off
 rem ============================================================================
-rem  start-harness.cmd  -  Windows cmd native launcher for deepseek harness (dsh)
+rem  start.cmd  -  Windows cmd launcher for deepseek harness (dsh)
 rem
-rem  Ensures Node.js and dsh are ready, starts the dsh web service and opens
-rem  http://localhost:<port> in the browser (app mode). The window auto-closes
-rem  after a successful launch (the service keeps running independently).
+rem  Runs setup first to prepare the toolchain (node + taobao mirror + nrm + dsh),
+rem  detects whether the dsh service (scheduled task dsh-web) is running,
+rem  resolves the service port, then opens http://localhost:<port> in a webview
+rem  / browser app window.
 rem
-rem  Pure cmd implementation. PowerShell is used ONLY for language detection
-rem  (same approach as setup.cmd).
+rem  Pure cmd implementation. PowerShell is used for language detection and
+rem  for scheduled-task status/port queries (State enum is locale-independent).
 rem
 rem  Usage:
-rem    start-harness.cmd                detect/install and start
-rem    start-harness.cmd --port 3080    specify dsh service port
-rem    start-harness.cmd --debug        use nodejs under script dir
-rem    start-harness.cmd --help         show help
-rem    start-harness.cmd /nopause       exit without pausing (for double-click)
+rem    start.cmd                start deepseek harness
+rem    start.cmd --port 3080    specify dsh service port
+rem    start.cmd --debug        run setup --debug
+rem    start.cmd --help         show help
+rem    start.cmd /nopause       exit without pausing (for double-click)
 rem
 rem  i18n: load locales/{lang}.lang by system language (default zh). Use:
 rem       call :msg <key> <arg1> <arg2> -> result stored in !M!
@@ -39,9 +40,10 @@ set "SELF=%~nx0"
 set "DEFAULT_PORT=3080"
 set "PORT=%DEFAULT_PORT%"
 if defined DSH_PORT set "PORT=%DSH_PORT%"
+set "CLI_PORT="
 set "DEBUG_MODE=0"
 set "NO_PAUSE=0"
-set "SUCCESS=0"
+set "SVC_NAME=dsh-web"
 
 rem ---- load language file into MSG_<key> ----
 set "LANG_FILE=%SCRIPT_DIR%locales\%LANG%.lang"
@@ -68,12 +70,9 @@ echo [WARN] !M!
 shift /1
 goto :parse
 :set_port
-if "%~2"=="" (
-    call :msg sh_need_port "%~1"
-    echo [ERROR] !M!
-    exit /b 1
-)
+if "%~2"=="" goto :args_done
 set "PORT=%~2"
+set "CLI_PORT=%~2"
 shift /1
 shift /1
 goto :parse
@@ -85,64 +84,60 @@ rem ============================================================================
 call :msg sh_title
 echo [INFO] !M!
 
+rem ---- 1) run setup to prepare the toolchain ----
+call :msg sh_setup_run
+echo [INFO] !M!
 if "%DEBUG_MODE%"=="1" (
-    call :msg sh_node_local "%SCRIPT_DIR%nodejs"
-    echo [INFO] !M!
-    call :remove_node_from_path
+    call "%SCRIPT_DIR%setup.cmd" --debug /nopause
+) else (
+    call "%SCRIPT_DIR%setup.cmd" /nopause
+)
+if errorlevel 1 (
+    call :msg sh_setup_fail
+    echo [ERROR] !M!
+    set "EXIT_CODE=1"
+    goto :finish
 )
 
-rem ---- ensure Node.js ----
-call :ensure_node
-if errorlevel 1 goto :finish
+rem ---- 2) resolve service port: --port > task config > DSH_PORT > default ----
+if "%CLI_PORT%"=="" call :get_task_port
+if defined TASK_PORT set "PORT=%TASK_PORT%"
 
-rem ---- ensure dsh globally installed ----
-call :ensure_dsh
-if errorlevel 1 goto :finish
+call :msg sh_port_using "%PORT%"
+echo [INFO] !M!
 
-rem ---- check service: running -> open browser; not running -> start & poll ----
 set "URL=http://localhost:%PORT%"
 
-call :check_port
+rem ---- 3) detect whether the dsh service is running ----
+call :svc_running
 if not errorlevel 1 goto :service_running
 
-call :msg sh_service_start
-echo [INFO] !M!
-call :start_dsh
-
-set "WAITED=0"
-:wait_loop
-call :check_port
+rem ---- start the service (scheduled task, fallback direct dsh) ----
+call :start_service
 if not errorlevel 1 goto :service_ready
-set /a WAITED+=1
-if %WAITED% GEQ 30 goto :service_fail
-ping -n 2 127.0.0.1 >nul
-goto :wait_loop
+
+call :msg sh_service_fail "%URL%"
+echo [WARN] !M!
+goto :finish
 
 :service_running
 call :msg sh_service_running "%URL%"
 echo [OK]    !M!
-set "SUCCESS=1"
 goto :open_browser
 
 :service_ready
 call :msg sh_service_ready "%URL%"
 echo [OK]    !M!
-set "SUCCESS=1"
 goto :open_browser
-
-:service_fail
-call :msg sh_service_fail "%URL%"
-echo [WARN] !M!
-goto :finish
 
 :open_browser
 call :msg sh_browser "%URL%"
 echo [INFO] !M!
 call :open_browser_internal
-if "%SUCCESS%"=="1" exit /b 0
 goto :finish
 
 :finish
+if defined EXIT_CODE exit /b %EXIT_CODE%
 exit /b 0
 
 :show_help
@@ -171,127 +166,55 @@ set "M=!M:{2}=%~3!"
 :msg_ret
 exit /b 0
 
-rem ---- ensure Node.js is available: errorlevel 0=ok, 1=missing ----
-:ensure_node
-call :detect_node
-if not errorlevel 1 exit /b 0
-
-call :msg sh_node_missing
-echo [INFO] !M!
-if "%DEBUG_MODE%"=="1" (
-    call "%SCRIPT_DIR%setup.cmd" --debug /nopause
-) else (
-    call "%SCRIPT_DIR%setup.cmd" /nopause
-)
-if errorlevel 1 (
-    call :msg sh_node_fail
-    echo [ERROR] !M!
-    exit /b 1
-)
-if exist "%SCRIPT_DIR%nodejs\node.exe" set "PATH=%SCRIPT_DIR%nodejs;%PATH%"
-call :detect_node
-if not errorlevel 1 exit /b 0
-call :msg sh_node_fail
-echo [ERROR] !M!
-exit /b 1
-
-rem ---- ensure dsh is globally installed: errorlevel 0=ok, 1=missing ----
-:ensure_dsh
-where dsh >nul 2>nul
-if not errorlevel 1 exit /b 0
-
-call :msg sh_dsh_missing
-echo [INFO] !M!
-call :msg sh_dsh_install
-echo [INFO] !M!
-npm install -g @deepseek-ai/dsh
-if errorlevel 1 goto :dsh_fail
-rem refresh PATH if npm global dir is not on it yet
-set "DSH_FOUND="
-where dsh >nul 2>nul && set "DSH_FOUND=1"
-if not defined DSH_FOUND if exist "%APPDATA%\npm\dsh.cmd" (
-    set "PATH=%APPDATA%\npm;%PATH%"
-    set "DSH_FOUND=1"
-)
-if not defined DSH_FOUND if exist "%SCRIPT_DIR%nodejs\dsh.cmd" (
-    set "PATH=%SCRIPT_DIR%nodejs;%PATH%"
-    set "DSH_FOUND=1"
-)
-if not defined DSH_FOUND goto :dsh_fail
-call :msg sh_dsh_done
-echo [OK]    !M!
-exit /b 0
-:dsh_fail
-call :msg sh_dsh_fail "@deepseek-ai/dsh"
-echo [ERROR] !M!
-exit /b 1
-
-rem ---- detect Node: errorlevel 0=ok (>=22), 1=missing/too old ----
-:detect_node
-if "%DEBUG_MODE%"=="1" (
-    if exist "%SCRIPT_DIR%nodejs\node.exe" (
-        set "PATH=%SCRIPT_DIR%nodejs;%PATH%"
-        goto :node_version
-    )
-)
-where node >nul 2>nul
-if errorlevel 1 goto :no_node
-:node_version
-for /f "usebackq delims=" %%v in (`node --version 2^>nul`) do set "NV=%%v"
-if not defined NV goto :no_node
-set "NODE_VERSION=%NV:~1%"
-for /f "tokens=1 delims=." %%m in ("%NODE_VERSION%") do set "NODE_MAJOR=%%m"
-if not defined NODE_MAJOR goto :no_node
-if %NODE_MAJOR% GEQ 22 goto :node_ok
-call :msg node_low "%NODE_VERSION%" "22"
-echo [WARN] !M!
-exit /b 1
-:node_ok
-call :msg node_ok "%NODE_VERSION%" "22"
-echo [OK]    !M!
-exit /b 0
-:no_node
-call :msg node_not_found
-echo [INFO] !M!
-exit /b 1
-
-rem ---- debug mode: strip nvm/node entries from current PATH ----
-:remove_node_from_path
-set "KEPT="
-set "REMOVED="
-for %%p in ("%PATH:;=" "%") do (
-    set "PI=%%~p"
-    if /i not "!PI:nvm=!"=="!PI!" (
-        set "REMOVED=!REMOVED!;!PI!"
-    ) else if /i not "!PI:node=!"=="!PI!" (
-        set "REMOVED=!REMOVED!;!PI!"
-    ) else (
-        set "KEPT=!KEPT!;!PI!"
-    )
-)
-if defined REMOVED (
-    set "PATH=!KEPT!"
-    call :msg sh_path_cleaned
-    echo [INFO] !M!
-)
+rem ---- read the --port value from the dsh-web task config (empty if none) ----
+:get_task_port
+set "TASK_PORT="
+for /f "usebackq delims=" %%a in (`powershell -NoProfile -Command "$t=Get-ScheduledTask -TaskName '%SVC_NAME%' -ErrorAction SilentlyContinue; if ($t) {$m=[regex]::Match($t.Actions.Arguments,'--port\s+(\d+)'); if ($m.Success) {Write-Output $m.Groups[1].Value}}"`) do set "TASK_PORT=%%a"
 exit /b 0
 
-rem ---- check port: errorlevel 0=running, 1=not running ----
+rem ---- scheduled task running: errorlevel 0=running, 1=not ----
+rem Uses PowerShell (State enum is locale-independent).
+:svc_running
+powershell -NoProfile -Command "$t=Get-ScheduledTask -TaskName '%SVC_NAME%' -ErrorAction SilentlyContinue; if ($t -and $t.State -eq 'Running'){exit 0}else{exit 1}" >nul 2>nul
+if not errorlevel 1 exit /b 0
+call :check_port
+exit /b
+
+rem ---- port listening: errorlevel 0=running, 1=not ----
 :check_port
 netstat -ano 2>nul | findstr /C:":%PORT% " | findstr /C:"LISTENING" >nul
 if errorlevel 1 exit /b 1
 exit /b 0
 
-rem ---- start dsh web in a new cmd window (background), then return ----
-rem Use `start "" cmd /c` so dsh (a .cmd shim) runs in a real console. Plain
-rem `start "title" dsh web ...` makes cmd treat the quoted arg as a window title
-rem and ShellExecute dsh, which can hand the command to the default browser and
-rem pop it open before the service has even been detected.
-:start_dsh
-start "" cmd /c "dsh web --port %PORT%"
-exit /b 0
+rem ---- start service (scheduled task, fallback direct dsh), poll port ----
+:start_service
+call :msg sh_service_start
+echo [INFO] !M!
+rem try the registered scheduled task first
+if exist "%SCRIPT_DIR%server\server-service.cmd" (
+    call "%SCRIPT_DIR%server\server-service.cmd" start /nopause >nul 2>nul
+)
+rem fallback: task missing/start failed -> spawn dsh web directly
+call :check_port
+if not errorlevel 1 goto :started
+if exist "%SCRIPT_DIR%nodejs\dsh.cmd" (
+    start "" "%SCRIPT_DIR%nodejs\dsh.cmd" web --port %PORT%
+) else (
+    start "" cmd /c "dsh web --port %PORT%"
+)
+:started
+call :msg sh_service_wait
+echo [INFO] !M!
+set "WAITED=0"
+:wait_loop
+call :check_port
+if not errorlevel 1 exit /b 0
+set /a WAITED+=1
+if %WAITED% GEQ 30 exit /b 1
+ping -n 2 127.0.0.1 >nul
+goto :wait_loop
 
-rem ---- open browser in app mode (Edge/Chrome), fallback default browser ----
+rem ---- open URL in webview/browser app mode (Edge/Chrome), fallback default ----
 :open_browser_internal
 set "EDGE="
 if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" set "EDGE=%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"

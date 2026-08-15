@@ -69,7 +69,7 @@ registry_set=npm-Registry auf Taobao-Spiegel umgestellt: {1}
 registry_already=npm-Registry ist bereits der Taobao-Spiegel: {1}
 registry_fail=Fehler beim Setzen der npm-Registry: {1}
 
-# --- gemeinsame Schlüssel für start-harness.{sh,ps1,cmd} (Präfix sh_) ---
+# --- gemeinsame Schlüssel für start.{sh,ps1,cmd} (Präfix sh_) ---
 sh_usage=Verwendung: {1} [Optionen]
 sh_usage_debug=  --debug        Debug: nodejs im Skriptordner verwenden
 sh_usage_help=  --help         Hilfe anzeigen
@@ -93,6 +93,9 @@ sh_browser=Öffne Browser: {1}
 sh_browser_fail=Browser konnte nicht automatisch geöffnet werden, bitte {1} manuell aufrufen
 sh_unknown=Unbekanntes Argument: {1}
 sh_usage_nopause=  /nopause       ohne Pause beenden (für Doppelklick)
+sh_setup_run=Führe setup aus, um die Toolchain vorzubereiten...
+sh_setup_fail=setup-Ausführung fehlgeschlagen
+sh_port_using=dsh-Dienstport: {1}
 
 # --- gemeinsame Schlüssel für server-service.{sh,ps1,cmd} (Präfix srvc_) ---
 srvc_title==== deepseek harness-Dienst (dsh web) ===

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #
-# start-harness.sh
-# 检测/安装 deepseek harness (dsh): 确保 Node.js 就绪、全局安装 @deepseek-ai/dsh、
-# 启动 dsh 服务，并用浏览器 app 模式打开 http://localhost:<port>。
+# start.sh
+# deepseek harness 启动器: 先运行 setup 确保工具链就绪, 检测 dsh 服务是否在运行,
+# 解析服务端口, 用 webview/浏览器 app 模式打开 http://localhost:<port>。
 #
 # 用法:
-#   ./start-harness.sh                 # 检测/安装并启动
-#   ./start-harness.sh --port 3080     # 指定服务端口 (默认 3080)
-#   ./start-harness.sh --debug         # 调试模式: 使用脚本目录下的 nodejs
-#   ./start-harness.sh --help
+#   ./start.sh                 # 启动 deepseek harness
+#   ./start.sh --port 3080     # 指定服务端口 (默认 3080)
+#   ./start.sh --debug         # 调试模式: setup --debug
+#   ./start.sh --help
 #
 # 兼容: Windows(git-bash/MSYS2) / macOS / Linux
 #
@@ -20,8 +20,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEFAULT_PORT=3080
 PORT="${DSH_PORT:-$DEFAULT_PORT}"
+CLI_PORT=""
 DEBUG_MODE=0
-DSH_PKG="@deepseek-ai/dsh"
+SVC_NAME="dsh-web"
+MACOS_LABEL="com.deepseek-harness.dsh-web"
 
 # ---------- 语言检测 (与 setup.sh 一致) ----------
 DETECTED_LANG="zh"
@@ -110,7 +112,7 @@ usage() {
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --port)   PORT="${2:-$DEFAULT_PORT}"; shift 2 ;;
+        --port)   PORT="${2:-$DEFAULT_PORT}"; CLI_PORT="$PORT"; shift 2 ;;
         --debug)  DEBUG_MODE=1; shift ;;
         --help|-h) usage ;;
         *) echo "$(msg sh_unknown "$1")" >&2; usage ;;
@@ -119,93 +121,87 @@ done
 
 is_mingw() { [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; }
 
-# ---------- 检测 Node.js (>= 22) ----------
-node_ok() {
-    local version major
-    if command -v node >/dev/null 2>&1; then
-        version="$(node --version 2>/dev/null | sed 's/^v//')"
-        major="${version%%.*}"
-        if [[ "$major" =~ ^[0-9]+$ ]] && (( major >= 22 )); then
-            ok "$(msg node_ok "$version" "22")"
-            return 0
-        fi
-    fi
-    return 1
-}
-
-# ---------- 确保 Node.js 就绪 ----------
-# 调试模式: 优先使用脚本目录下的 nodejs/; 不存在则调用 setup --debug 安装。
-# 普通模式: 检测 PATH 上的 node; 缺失则调用 setup。
-ensure_node() {
+# ---------- 1) 运行 setup 确保工具链就绪 (node + 淘宝镜像 + nrm + dsh) ----------
+ensure_toolchain() {
+    info "$(msg sh_setup_run)"
     if [[ "$DEBUG_MODE" -eq 1 ]]; then
-        local local_node="$SCRIPT_DIR/nodejs"
-        local bin_dir="$local_node/bin"
-        if is_mingw; then bin_dir="$local_node"; fi
-        if [[ -x "$bin_dir/node" || -x "$bin_dir/node.exe" ]]; then
-            export PATH="$bin_dir:$PATH"
-            ok "$(msg sh_node_local "$local_node")"
-            if node_ok; then return 0; fi
-        fi
-        info "$(msg sh_node_missing)"
-        bash "$SCRIPT_DIR/setup.sh" --debug || { fail "$(msg sh_node_fail)"; exit 1; }
-        export PATH="$bin_dir:$PATH"
-        if node_ok; then return 0; fi
-        fail "$(msg sh_node_fail)"; exit 1
+        bash "$SCRIPT_DIR/setup.sh" --debug || { fail "$(msg sh_setup_fail)"; exit 1; }
+    else
+        bash "$SCRIPT_DIR/setup.sh" || { fail "$(msg sh_setup_fail)"; exit 1; }
     fi
-    if node_ok; then return 0; fi
-    info "$(msg sh_node_missing)"
-    bash "$SCRIPT_DIR/setup.sh" || { fail "$(msg sh_node_fail)"; exit 1; }
-    node_ok || { fail "$(msg sh_node_fail)"; exit 1; }
 }
 
-# ---------- 确保 dsh 已全局安装 ----------
-ensure_dsh() {
-    if command -v dsh >/dev/null 2>&1; then
-        ok "$(msg sh_dsh_ok)"
-        return 0
+# ---------- 2) 解析 dsh 服务端口 ----------
+# 优先级: --port 参数 > 服务配置里的 --port > DSH_PORT > 默认 3080
+get_dsh_port() {
+    local arg_port="$1" port_file port
+    if [[ -n "$arg_port" ]]; then echo "$arg_port"; return; fi
+    # 从服务配置文件提取 --port
+    if [[ "$(uname -s)" == Linux && -f /etc/systemd/system/$SVC_NAME.service ]]; then
+        port_file="$(grep -o -- '--port [0-9]*' /etc/systemd/system/$SVC_NAME.service 2>/dev/null | grep -o '[0-9]*' | head -n1)"
+        if [[ -n "$port_file" ]]; then echo "$port_file"; return; fi
+    elif [[ "$(uname -s)" == Darwin && -f "/Library/LaunchDaemons/$MACOS_LABEL.plist" ]]; then
+        port="$(grep -A1 '<key>--port</key>' "/Library/LaunchDaemons/$MACOS_LABEL.plist" 2>/dev/null | grep -o '[0-9]*' | head -n1)"
+        if [[ -n "$port" ]]; then echo "$port"; return; fi
     fi
-    info "$(msg sh_dsh_missing)"
-    info "$(msg sh_dsh_install)"
-    npm install -g "$DSH_PKG" || { fail "$(msg sh_dsh_fail "$DSH_PKG")"; exit 1; }
-    # npm 全局 bin 可能不在当前 PATH, 尝试补全
-    if ! command -v dsh >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
-        local prefix gbin
-        prefix="$(npm prefix -g 2>/dev/null)"
-        if [[ -n "$prefix" ]]; then
-            gbin="$prefix/bin"
-            if is_mingw; then gbin="$prefix"; fi
-            export PATH="$gbin:$PATH"
-        fi
-    fi
-    command -v dsh >/dev/null 2>&1 || { fail "$(msg sh_dsh_fail "$DSH_PKG")"; exit 1; }
-    ok "$(msg sh_dsh_done)"
+    echo "$PORT"
 }
 
-# ---------- 检查服务是否已运行 ----------
+# ---------- 端口就绪探测 (HTTP) ----------
 service_up() {
     curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 3 "http://127.0.0.1:$PORT/" 2>/dev/null | grep -qE '^[1-9][0-9][0-9]$'
 }
 
-# ---------- 后台启动 dsh web (绑定指定端口, 完全脱离当前会话) ----------
-start_service() {
-    local port="$1"
-    # nohup + 全 fd 重定向 + disown: 服务独立运行, 脚本结束后不阻塞、不被 SIGHUP 杀掉
-    nohup dsh web --port "$port" >/dev/null 2>&1 &
-    disown 2>/dev/null || true
+# ---------- 3) 检测 dsh 服务是否在运行 ----------
+service_running() {
+    local os
+    os="$(uname -s)"
+    if [[ "$os" == "Linux" ]]; then
+        systemctl is-active --quiet "$SVC_NAME" 2>/dev/null && return 0
+    elif [[ "$os" == "Darwin" ]]; then
+        launchctl print "system/$MACOS_LABEL" >/dev/null 2>&1 && return 0
+    fi
+    service_up && return 0
+    return 1
 }
 
-# ---------- 用浏览器 app 模式打开 URL ----------
+# ---------- 启动 dsh 服务 (优先用已注册的服务, 无则后台直连) ----------
+start_service() {
+    info "$(msg sh_service_start)"
+    local svc_script="$SCRIPT_DIR/server/server-service.sh"
+    local os
+    os="$(uname -s)"
+    if [[ -f "$svc_script" && ( "$os" == Linux || "$os" == Darwin ) ]]; then
+        bash "$svc_script" start >/dev/null 2>&1 || true
+    fi
+    # 服务未注册或启动失败 -> 兜底: 后台直连 dsh web (脱离当前会话)
+    if ! service_up; then
+        if command -v dsh >/dev/null 2>&1; then
+            nohup dsh web --port "$PORT" >/dev/null 2>&1 &
+            disown 2>/dev/null || true
+        fi
+    fi
+    info "$(msg sh_service_wait)"
+    local i
+    for i in $(seq 1 30); do
+        if service_up; then return 0; fi
+        sleep 1
+    done
+    return 1
+}
+
+# ---------- 用 webview/浏览器 app 模式打开 URL ----------
 open_browser() {
     local url="$1"
     info "$(msg sh_browser "$url")"
     if is_mingw; then
-        # Windows: 用 PowerShell Start-Process 启动 Edge/Chrome 的 --app 模式,
-        # 回退默认浏览器。避免 cmd start 的引号/路径转义问题。
         local ps edge chrome
         edge="C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"
         [[ -f "$edge" ]] || edge="C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe"
+        [[ -f "$edge" ]] || edge="$LOCALAPPDATA\\Microsoft\\Edge\\Application\\msedge.exe"
         chrome="C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
         [[ -f "$chrome" ]] || chrome="C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"
+        [[ -f "$chrome" ]] || chrome="$LOCALAPPDATA\\Google\\Chrome\\Application\\chrome.exe"
         if [[ -f "$edge" ]]; then
             ps="Start-Process -FilePath '$edge' -ArgumentList '--app=$url'"
         elif [[ -f "$chrome" ]]; then
@@ -216,15 +212,12 @@ open_browser() {
         if powershell -NoProfile -Command "$ps" >/dev/null 2>&1; then
             return 0
         fi
-        # 兜底: cmd start 默认浏览器
         cmd //c "start \"\" \"$url\"" >/dev/null 2>&1 && return 0
     elif [[ "$(uname -s)" == "Darwin" ]]; then
-        # macOS: 尝试 Chrome/Edge 的 app 模式, 回退默认浏览器
         open -a "Google Chrome" --args "--app=$url" 2>/dev/null && return 0
         open -a "Microsoft Edge" --args "--app=$url" 2>/dev/null && return 0
         open "$url" 2>/dev/null && return 0
     else
-        # Linux: 尝试各浏览器 app 模式, 回退 xdg-open
         for br in google-chrome google-chrome-stable chromium chromium-browser microsoft-edge; do
             command -v "$br" >/dev/null 2>&1 && { "$br" "--app=$url" >/dev/null 2>&1 & return 0; }
         done
@@ -236,37 +229,26 @@ open_browser() {
 # ---------- 主流程 ----------
 main() {
     info "$(msg sh_title)"
-    if [[ "$DEBUG_MODE" -eq 1 ]]; then
-        info "$(msg sh_node_local "$SCRIPT_DIR/nodejs")"
-    fi
 
-    ensure_node
-    ensure_dsh
+    ensure_toolchain
+
+    PORT="$(get_dsh_port "$CLI_PORT")"
+    info "$(msg sh_port_using "$PORT")"
 
     local url="http://localhost:$PORT"
-    if service_up; then
+    if service_running; then
         ok "$(msg sh_service_running "$url")"
         open_browser "$url"
         return 0
     fi
 
-    info "$(msg sh_service_start)"
-    start_service "$PORT"
-    info "$(msg sh_service_wait)"
-    local i
-    for i in $(seq 1 30); do
-        if service_up; then break; fi
-        sleep 1
-    done
-    if service_up; then
+    if start_service; then
         ok "$(msg sh_service_ready "$url")"
         open_browser "$url"
     else
-        # 服务未启动成功: 只提示, 不打开浏览器
         warn "$(msg sh_service_fail "$url")"
     fi
 }
 
-# 服务已在后台独立运行, 本脚本完成使命后自动退出 (不等待服务进程)
 main "$@"
 exit 0
