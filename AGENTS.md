@@ -19,7 +19,7 @@
 
 1. 检测 `node --version` 主版本是否 ≥22 → 是则跳过，结束。
 2. 若用户已装 **nvm**（Windows 的 `nvm.exe` / macOS·Linux 的 `nvm` shell 函数），**优先用 nvm 安装 Node 22**。
-3. nvm 安装失败或未装 nvm → 从 `nodejs.org/dist` 官方下载对应平台包，安装到指定目录（默认 `$HOME/nodejs`）→ 配置 PATH。
+3. nvm 安装失败或未装 nvm → 从 `nodejs.org/dist` 官方下载对应平台包，安装到指定目录（默认**脚本启动目录**下的 `nodejs`）→ 配置 PATH。
 
 ## 关键参数
 
@@ -47,6 +47,7 @@
   - `bash -n setup-node.sh`（语法）
   - PowerShell 解析器 `ParseFile`（ps1 语法）
   - `bash setup-node.sh --dry-run` / `powershell -File setup-node.ps1 -DryRun` 本机走"已装"分支。
+  - **测试安装流程时一律加 `--debug` / `-Debug` 参数**：隔离验证、跳过 nvm、安装到脚本目录 `nodejs/`，且只改当前会话 PATH、不写用户持久化 PATH，避免污染本机环境。
 
 ## 约定
 

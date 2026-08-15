@@ -4,7 +4,7 @@
 #
 # 安装策略:
 #   1) 若已安装 nvm (nvm-windows)，优先使用 nvm 安装 Node 22。
-#   2) 否则从 nodejs.org 官方下载 zip 安装到 -Dir (默认 $HOME\nodejs)。
+#   2) 否则从 nodejs.org 官方下载 zip 安装到 -Dir (默认脚本目录下的 nodejs)。
 #
 # 用法:
 #   powershell -ExecutionPolicy Bypass -File setup-node.ps1
@@ -13,23 +13,38 @@
 #   powershell -ExecutionPolicy Bypass -File setup-node.ps1 -DryRun
 #
 # 参数:
-#   -Dir <路径>   指定安装目录 (默认: $HOME\nodejs)
+#   -Dir <路径>   指定安装目录 (默认: 脚本目录下的 nodejs)
 #   -NoEnv        不修改 PATH 环境变量
 #   -DryRun       只检测, 不下载安装
-
-param(
-    [string]$Dir,
-    [switch]$NoEnv,
-    [switch]$DryRun,
-    [switch]$Debug,
-    [switch]$Help
-)
 
 # ---------- 控制台 UTF-8 (确保中文在 cmd/PowerShell 窗口正常显示) ----------
 try {
     $OutputEncoding = [System.Text.Encoding]::UTF8
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 } catch { }
+
+# ---------- 解析参数 (支持 -, --, / 三种前缀) ----------
+$ArgDir   = $null
+$ArgNoEnv = $false
+$ArgDryRun= $false
+$ArgDebug = $false
+$ArgHelp  = $false
+for ($i = 0; $i -lt $args.Count; $i++) {
+    $a = $args[$i]
+    switch ($a) {
+        { $_ -in "-dir","--dir","/dir" } {
+            if ($i + 1 -lt $args.Count) { $ArgDir = $args[$i + 1]; $i++ }
+            else { Write-Host "[ERROR] $a 需要路径参数" -ForegroundColor Red; exit 1 }
+        }
+        { $_ -in "-noenv","--no-env","/no-env" } { $ArgNoEnv = $true }
+        { $_ -in "-dryrun","--dry-run","/dry-run" } { $ArgDryRun = $true }
+        { $_ -in "-debug","--debug","/debug" } { $ArgDebug = $true }
+        { $_ -in "-help","--help","/help","-h","-?" } { $ArgHelp = $true }
+        default {
+            Write-Host "[WARN] 未知参数: $a" -ForegroundColor Yellow
+        }
+    }
+}
 
 # ---------- 默认配置 ----------
 $Script:Version   = "22.23.2"      # Node.js 22 LTS 最新版 (nvm 用无 v 前缀)
@@ -38,27 +53,26 @@ $Script:MinMajor  = 22
 $Script:BaseUrl   = "https://nodejs.org/dist"
 $Script:ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-# 安装目录: -Dir 优先; Debug 模式装到脚本启动目录; 否则默认 $HOME\nodejs
-if ($Debug) {
-    $Script:InstallDir = Join-Path $Script:ScriptDir "nodejs"
-} elseif ($Dir) {
-    $Script:InstallDir = $Dir
+# 安装目录: -Dir 优先; 否则默认安装到脚本启动目录下的 nodejs
+if ($ArgDir) {
+    $Script:InstallDir = $ArgDir
 } else {
-    $Script:InstallDir = Join-Path $HOME "nodejs"
+    $Script:InstallDir = Join-Path $Script:ScriptDir "nodejs"
 }
 
 # ---------- 帮助 ----------
 function Show-Usage {
     Write-Host "用法: powershell -ExecutionPolicy Bypass -File setup-node.ps1 [选项]"
-    Write-Host "  -Dir <路径>   指定安装目录 (默认: $HOME\nodejs)"
+    Write-Host "  -Dir <路径>   指定安装目录 (默认: 脚本目录下的 nodejs)"
     Write-Host "  -NoEnv        不修改 PATH 环境变量"
     Write-Host "  -DryRun       只检测, 不下载安装"
     Write-Host "  -Debug        调试模式: 从当前会话 PATH 移除 nvm/node 相关项, 安装到脚本目录"
     Write-Host "  -Help         显示帮助"
+    Write-Host "  参数支持 - 、--、/ 三种前缀，如 --help 或 /help"
     exit 0
 }
 
-if ($Help) { Show-Usage }
+if ($ArgHelp) { Show-Usage }
 
 # ---------- 颜色输出 ----------
 $C_Info  = "Cyan"
@@ -139,16 +153,15 @@ function Install-Node-Direct {
     Write-Info "平台: win / $arch"
 
     $distUrl = "$($Script:BaseUrl)/$($Script:VVersion)/node-$($Script:VVersion)-win-$arch.zip"
-    $tmpDir  = Join-Path $env:TEMP "node-setup-$PID"
-    $zipPath = Join-Path $tmpDir "node.zip"
-    New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null
+    $zipPath = Join-Path $Script:ScriptDir "node-$($Script:VVersion)-win-$arch.zip"
+    if (Test-Path $zipPath) { Remove-Item -Force $zipPath -ErrorAction SilentlyContinue }
 
     Write-Info "下载 $distUrl ..."
     try {
         Invoke-WebRequest -Uri $distUrl -OutFile $zipPath -UseBasicParsing
     } catch {
         Write-Fail "下载失败: $($_.Exception.Message)"
-        Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
+        Remove-Item -Force $zipPath -ErrorAction SilentlyContinue
         return $false
     }
 
@@ -156,21 +169,25 @@ function Install-Node-Direct {
     New-Item -ItemType Directory -Force -Path $Script:InstallDir | Out-Null
 
     Write-Info "解压中..."
+    $extractDir = Join-Path $Script:ScriptDir "node-extract-$PID"
+    New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
     try {
-        Expand-Archive -Path $zipPath -DestinationPath $tmpDir -Force
-        $extractRoot = Get-ChildItem -Path $tmpDir -Directory -Filter "node-$($Script:VVersion)-win-$arch"
+        Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+        $extractRoot = Get-ChildItem -Path $extractDir -Directory -Filter "node-$($Script:VVersion)-win-$arch"
         if ($extractRoot) {
             Copy-Item -Path (Join-Path $extractRoot.FullName "*") -Destination $Script:InstallDir -Recurse -Force
         } else {
-            Copy-Item -Path (Join-Path $tmpDir "*") -Destination $Script:InstallDir -Recurse -Force
+            Copy-Item -Path (Join-Path $extractDir "*") -Destination $Script:InstallDir -Recurse -Force
         }
     } catch {
         Write-Fail "解压失败: $($_.Exception.Message)"
-        Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
+        Remove-Item -Recurse -Force $extractDir -ErrorAction SilentlyContinue
+        Remove-Item -Force $zipPath -ErrorAction SilentlyContinue
         return $false
     }
 
-    Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force $extractDir -ErrorAction SilentlyContinue
+    Remove-Item -Force $zipPath -ErrorAction SilentlyContinue
 
     if (Test-Path (Join-Path $Script:InstallDir "node.exe")) {
         Write-Ok "Node.js 已安装到 $Script:InstallDir"
@@ -227,20 +244,20 @@ function Remove-NodeFromPath {
 function Main {
     Write-Info "=== Node.js 环境检测与安装 ==="
 
-    if ($Debug) {
+    if ($ArgDebug) {
         Write-Info "=== 调试模式启用: 安装目录 = $Script:InstallDir ==="
         Remove-NodeFromPath
     }
 
     if (Test-Node) { exit 0 }
 
-    if ($DryRun) {
+    if ($ArgDryRun) {
         Write-Info "-DryRun 模式，跳过安装"
         exit 1
     }
 
     $ok = $false
-    if ($Debug) {
+    if ($ArgDebug) {
         # 调试模式不走 nvm, 强制官方下载以隔离验证
         Write-Info "调试模式: 跳过 nvm，直接官方下载..."
         $ok = Install-Node-Direct
@@ -260,8 +277,8 @@ function Main {
         exit 1
     }
 
-    if ($NoEnv -or $Debug) {
-        if ($Debug) {
+    if ($ArgNoEnv -or $ArgDebug) {
+        if ($ArgDebug) {
             Write-Info "调试模式: 仅更新当前会话 PATH，不写用户持久化 PATH"
             $env:Path = "$Script:InstallDir;$env:Path"
         } else {

@@ -4,7 +4,7 @@
 # 检测当前环境是否有 Node.js 22+，如果没有则自动下载安装，并配置环境变量。
 #
 # 用法:
-#   ./setup-node.sh                 # 使用默认安装目录 ($HOME/nodejs)
+#   ./setup-node.sh                 # 使用默认安装目录 (脚本目录下的 nodejs)
 #   ./setup-node.sh --dir /path     # 指定安装目录
 #   ./setup-node.sh --no-env        # 不修改环境变量(PATH)
 #   ./setup-node.sh --dry-run       # 只检测, 不下载
@@ -15,12 +15,11 @@
 set -euo pipefail
 
 # ---------- 默认配置 ----------
-DEFAULT_DIR="$HOME/nodejs"
 VERSION="v22.23.2"                 # Node.js 22 LTS 最新版
 MIN_MAJOR=22
 BASE_URL="https://nodejs.org/dist"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INSTALL_DIR="${NODE_INSTALL_DIR:-$DEFAULT_DIR}"
+INSTALL_DIR="${NODE_INSTALL_DIR:-$SCRIPT_DIR/nodejs}"
 DO_ENV=1
 DRY_RUN=0
 DEBUG_MODE=0
@@ -28,7 +27,7 @@ DEBUG_MODE=0
 # ---------- 解析参数 ----------
 usage() {
     echo "用法: $0 [选项]"
-    echo "  --dir <路径>   指定安装目录 (默认: $DEFAULT_DIR)"
+    echo "  --dir <路径>   指定安装目录 (默认: 脚本目录下的 nodejs)"
     echo "  --no-env       不修改 PATH 环境变量"
     echo "  --dry-run      只检测, 不下载安装"
     echo "  --debug        调试模式: 从当前会话 PATH 移除 nvm/node 相关项, 安装到脚本目录"
@@ -46,10 +45,6 @@ while [[ $# -gt 0 ]]; do
         *) echo "未知参数: $1" >&2; usage ;;
     esac
 done
-
-if [[ "$DEBUG_MODE" -eq 1 ]]; then
-    INSTALL_DIR="$SCRIPT_DIR/nodejs"
-fi
 
 # ---------- 颜色输出 ----------
 if [[ -t 1 ]]; then
@@ -142,11 +137,11 @@ install_node() {
     case "$os" in
         win)
             dist_url="$BASE_URL/$VERSION/node-$VERSION-win-$arch.zip"
-            tmpfile="$(mktemp -t node-XXXXXX.zip)"
+            tmpfile="$SCRIPT_DIR/node-$VERSION-win-$arch.zip"
             ;;
         *)
             dist_url="$BASE_URL/$VERSION/node-$VERSION-$os-$arch.tar.gz"
-            tmpfile="$(mktemp -t node-XXXXXX.tar.gz)"
+            tmpfile="$SCRIPT_DIR/node-$VERSION-$os-$arch.tar.gz"
             ;;
     esac
 
@@ -227,13 +222,19 @@ configure_env() {
     done
 
     # 3) Windows 用户 PATH (setx)，让 cmd/PowerShell 也能用
-    if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]] && command -v setx >/dev/null 2>&1; then
-        local winpath
+    #    注意: 不能用 bash 的 $PATH (MSYS 风格, 含 /e/... 与 ':' 分隔) 直接 setx,
+    #    否则会写入损坏的 Windows PATH。用 PowerShell 读写用户 PATH (正确处理 UTF-16,
+    #    避免非 ASCII 条目在 reg/setx 控制台代码页下被写坏)。
+    if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]] && command -v powershell >/dev/null 2>&1; then
+        local winpath ps_script
         winpath="$(cygpath -w "$INSTALL_DIR")"
-        if ! echo "$PATH" | grep -qi "$INSTALL_DIR"; then
-            info "将 $winpath 添加到 Windows 用户 PATH..."
-            setx PATH "$winpath;$PATH" >/dev/null 2>&1 && ok "已更新 Windows 用户 PATH" || warn "setx 更新失败，请手动添加 $winpath"
-        fi
+        ps_script="\$p=[Environment]::GetEnvironmentVariable('Path','User'); if(\$p -and (\$p.Split(';') -contains '$winpath')){ exit 2 } elseif(\$p){ [Environment]::SetEnvironmentVariable('Path', '$winpath;'+\$p, 'User') } else { [Environment]::SetEnvironmentVariable('Path', '$winpath', 'User') }"
+        powershell -NoProfile -Command "$ps_script"
+        case $? in
+            0) ok "已更新 Windows 用户 PATH (添加 $winpath)" ;;
+            2) info "Windows 用户 PATH 已包含 $winpath，跳过" ;;
+            *) warn "更新 Windows 用户 PATH 失败，请手动添加 $winpath" ;;
+        esac
     fi
 }
 
@@ -302,7 +303,11 @@ main() {
     else
         if [[ "$DEBUG_MODE" -eq 1 ]]; then
             info "调试模式: 仅更新当前会话 PATH，不写用户持久化 PATH"
-            export PATH="$INSTALL_DIR/bin:$PATH"
+            if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; then
+                export PATH="$INSTALL_DIR:$PATH"
+            else
+                export PATH="$INSTALL_DIR/bin:$PATH"
+            fi
         else
             info "--no-env 已指定，跳过环境变量配置"
             warn "请手动将 $INSTALL_DIR 加入 PATH"

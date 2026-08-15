@@ -48,7 +48,7 @@ bash setup-node.sh
 
 | 参数（sh） | 参数（ps1） | 说明 |
 | --- | --- | --- |
-| `--dir <路径>` | `-Dir <路径>` | 指定安装目录（默认 `$HOME/nodejs`） |
+| `--dir <路径>` | `-Dir <路径>` | 指定安装目录（默认：脚本目录下的 `nodejs`） |
 | `--no-env` | `-NoEnv` | 不修改 PATH 环境变量 |
 | `--dry-run` | `-DryRun` | 只检测，不下载安装 |
 | `--debug` | `-Debug` | 调试模式：移除当前会话 PATH 中的 nvm/node，安装到脚本目录 |
