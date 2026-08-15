@@ -3,7 +3,7 @@ usage_usage=Uso: {1} [opciones]
 usage_dir=  --dir <ruta>   especificar directorio de instalación (predet.: nodejs en el script)
 usage_noenv=  --no-env       no modificar PATH
 usage_dryrun=  --dry-run      solo detectar, no instalar
-usage_debug=  --debug        depurar: limpiar variables de entorno, solo revisar el script, instalar ahí
+usage_debug=  --debug        depurar: limpiar solo la sesión, instalar aislado en el script, sin global
 usage_help=  --help         mostrar ayuda
 usage_nopause=  /nopause       no pausar al salir (para doble clic)
 usage_prefix=  los argumentos aceptan prefijos - , -- , / (p. ej. --help o /help)
@@ -55,7 +55,6 @@ nvm_found=nvm detectado
 dsh_ok=dsh detectado
 dsh_not_found=dsh no detectado, instalando @deepseek-ai/dsh globalmente ...
 dsh_install=npm install -g @deepseek-ai/dsh ...
-dsh_install_local=Modo depuración: instalando dsh en el directorio del script...
 dsh_done=dsh instalado globalmente
 dsh_fail=Error al instalar dsh: {1}
 
@@ -64,13 +63,13 @@ nrm_install=nrm no encontrado, instalando globalmente ...
 nrm_ok=nrm detectado
 nrm_done=nrm instalado globalmente
 nrm_fail=Error al instalar nrm: {1}
-nrm_install_local=Modo depuración: instalando nrm en el directorio del script...
 registry_set=Registro npm cambiado al espejo de Taobao: {1}
 registry_already=El registro npm ya es el espejo de Taobao: {1}
 registry_fail=Error al configurar el registro npm: {1}
 
 # --- claves compartidas para start.{sh,ps1,cmd} (prefijo sh_) ---
 sh_usage=Uso: {1} [opciones]
+sh_usage_port=  --port <puerto> puerto del servicio dsh (predeterminado: {1})
 sh_usage_debug=  --debug        depuración: usar nodejs del directorio del script
 sh_usage_help=  --help         mostrar ayuda
 sh_title==== Lanzador de deepseek harness ===

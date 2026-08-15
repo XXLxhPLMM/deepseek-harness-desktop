@@ -3,7 +3,7 @@ usage_usage=用法: {1} [选项]
 usage_dir=  --dir <路径>   指定安装目录 (默认: 脚本目录下的 nodejs)
 usage_noenv=  --no-env       不修改 PATH 环境变量
 usage_dryrun=  --dry-run      只检测, 不下载安装
-usage_debug=  --debug        调试模式: 清理环境变量, 只检查脚本目录, 安装到脚本目录
+usage_debug=  --debug        调试模式: 只清当前会话环境, 隔离安装到脚本目录, 不写全局
 usage_help=  --help         显示帮助
 usage_nopause=  /nopause       退出时不暂停窗口 (双击运行时用)
 usage_prefix=  参数支持 - 、--、/ 三种前缀，如 --help 或 /help
@@ -55,7 +55,6 @@ nvm_found=已检测到 nvm
 dsh_ok=已检测到 dsh
 dsh_not_found=未检测到 dsh，开始全局安装 @deepseek-ai/dsh ...
 dsh_install=npm install -g @deepseek-ai/dsh ...
-dsh_install_local=调试模式: 安装 dsh 到脚本目录...
 dsh_done=dsh 已全局安装
 dsh_fail=dsh 安装失败: {1}
 
@@ -64,13 +63,13 @@ nrm_install=未检测到 nrm，开始全局安装 nrm ...
 nrm_ok=已检测到 nrm
 nrm_done=nrm 已全局安装
 nrm_fail=nrm 安装失败: {1}
-nrm_install_local=调试模式: 安装 nrm 到脚本目录...
 registry_set=已切换 npm 源到淘宝镜像: {1}
 registry_already=npm 源已是淘宝镜像: {1}
 registry_fail=设置 npm 源失败: {1}
 
 # --- start.{sh,ps1,cmd} 共享键 (前缀 sh_) ---
 sh_usage=用法: {1} [选项]
+sh_usage_port=  --port <端口>   dsh 服务端口 (默认: {1})
 sh_usage_debug=  --debug        调试模式: 使用脚本目录下的 nodejs
 sh_usage_help=  --help         显示帮助
 sh_title==== deepseek harness 启动器 ===

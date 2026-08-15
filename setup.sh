@@ -9,7 +9,7 @@
 #   ./setup.sh --dir /path           # 指定 node 安装目录 (默认: 脚本目录下的 nodejs)
 #   ./setup.sh --no-env              # 不修改环境变量(PATH)
 #   ./setup.sh --dry-run             # 只检测, 不安装
-#   ./setup.sh --debug               # 调试模式: 清理环境变量, 只检查脚本目录, 安装到脚本目录
+#   ./setup.sh --debug               # 调试模式: 只清当前会话环境, 隔离安装到脚本目录, 不写全局
 #   ./setup.sh --help
 #
 # 兼容: Windows(git-bash/MSYS2) / macOS / Linux
@@ -292,7 +292,7 @@ install_node() {
 }
 
 # ---- 第 2.5 级: npm 淘宝镜像 + nrm 全局安装 (需 node/npm 就绪) ----
-# 普通模式: 写用户 npm 配置 + 全局安装 nrm。调试模式: 会话级隔离, 不碰用户配置。
+# 调试模式仅以会话级 npm_config_registry 隔离源, 安装逻辑与普通模式一致。
 # nrm 安装失败不致命 (警告即可), 不影响核心工具链。
 ensure_npm_mirror() {
     # 确保当前会话 npm 可用 (直接下载安装 node 后 PATH 尚未更新)
@@ -303,9 +303,12 @@ ensure_npm_mirror() {
             export PATH="$npm_cand:$PATH"
         fi
     fi
-    # 调试模式: 用会话级环境变量设置源, 不写用户 ~/.npmrc
+    # 调试模式: 用会话级环境变量设置源/全局前缀, 不写用户 ~/.npmrc。
+    # 全局前缀必须一并覆盖, 否则 ~/.npmrc 里的 prefix= 会把 npm install -g
+    # 导向用户全局 (如 nvm 管理的系统 node), 破坏隔离。
     if [[ "$DEBUG_MODE" -eq 1 ]]; then
         export npm_config_registry="$NPM_REGISTRY"
+        export npm_config_prefix="$INSTALL_DIR"
     fi
 
     if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -336,42 +339,18 @@ ensure_npm_mirror() {
         ok "$(msg nrm_ok)"
         return 0
     fi
-    if [[ "$DEBUG_MODE" -eq 1 ]]; then
-        info "$(msg nrm_install_local)"
-        if npm install -g --prefix "$SCRIPT_DIR" "$NRM_PKG" >/dev/null 2>&1; then
-            ok "$(msg nrm_done)"
-        else
-            warn "$(msg nrm_fail "$NRM_PKG")"
-        fi
+    info "$(msg nrm_install)"
+    if npm install -g "$NRM_PKG" >/dev/null 2>&1; then
+        ok "$(msg nrm_done)"
     else
-        info "$(msg nrm_install)"
-        if npm install -g "$NRM_PKG" >/dev/null 2>&1; then
-            ok "$(msg nrm_done)"
-        else
-            warn "$(msg nrm_fail "$NRM_PKG")"
-        fi
+        warn "$(msg nrm_fail "$NRM_PKG")"
     fi
     return 0
 }
 
 # ---- 第 3 级: dsh (全局安装 @deepseek-ai/dsh) ----
-# 普通模式: 检测 PATH 上的 dsh。调试模式: 只检查脚本目录。
+# 检测 PATH 上的 dsh (调试模式下 PATH 已指向脚本目录 node 的全局, 视角一致)。
 detect_dsh() {
-    local cand dir
-    if [[ "$DEBUG_MODE" -eq 1 ]]; then
-        # 调试模式: 只检查脚本目录下可能的位置
-        for cand in "$SCRIPT_DIR/node_modules/.bin/dsh" "$SCRIPT_DIR/bin/dsh" "$SCRIPT_DIR/dsh" "$SCRIPT_DIR/dsh.cmd"; do
-            if [[ -x "$cand" || -f "$cand" ]]; then
-                dir="$(dirname "$cand")"
-                export PATH="$dir:$PATH"
-                if command -v dsh >/dev/null 2>&1; then
-                    ok "$(msg dsh_ok)"
-                    return 0
-                fi
-            fi
-        done
-        return 1
-    fi
     if command -v dsh >/dev/null 2>&1; then
         ok "$(msg dsh_ok)"
         return 0
@@ -380,23 +359,6 @@ detect_dsh() {
 }
 
 install_dsh() {
-    if [[ "$DEBUG_MODE" -eq 1 ]]; then
-        # 调试模式: 安装到脚本目录 (隔离, 不碰用户全局)
-        # 提示: 调试模式: 安装 dsh 到脚本目录...
-        info "$(msg dsh_install_local)"
-        npm install -g --prefix "$SCRIPT_DIR" "$DSH_PKG" || {
-            fail "$(msg dsh_fail "$DSH_PKG")"
-            return 1
-        }
-        # 补 PATH, 让脚本目录下的 dsh 可用
-        if is_mingw; then
-            export PATH="$SCRIPT_DIR:$PATH"
-        else
-            export PATH="$SCRIPT_DIR/bin:$PATH"
-        fi
-        return 0
-    fi
-    # 普通模式: 全局安装
     # 提示: 未检测到 dsh，开始全局安装 @deepseek-ai/dsh ...
     info "$(msg dsh_not_found)"
     info "$(msg dsh_install)"
@@ -496,8 +458,11 @@ remove_node_from_path() {
     for item in "${items[@]}"; do
         [[ -z "$item" ]] && continue
         if [[ "$item" == *"nvm"* || "$item" == *"node"* ]]; then
-            # 提示: 移除: <item>
-            warn "  $(msg removing "$item")"
+            # report each unique removed path once (PATH may hold duplicates)
+            if [[ ":$removed:" != *":$item:"* ]]; then
+                # 提示: 移除: <item>
+                warn "  $(msg removing "$item")"
+            fi
             removed="${removed:+$removed:}$item"
         else
             kept="${kept:+$kept:}$item"

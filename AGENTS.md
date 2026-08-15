@@ -39,7 +39,7 @@
   - macOS/Linux 读 `$LANG`/`LC_ALL`。
   - 前缀匹配：`zh-TW/HK/MO`→`zh-TW`（繁体），`zh`→`zh`（简体），`ja/ko/fr/de/es/en`→对应，其余→`zh`。
   - `en` 需显式匹配，否则英文系统会落入默认中文。
-- 现有语言包：`zh`（简体）`zh-TW`（繁体/台湾）`en` `ja` `ko` `fr` `de` `es`（各 121 个键，键名必须完全对齐）。
+- 现有语言包：`zh`（简体）`zh-TW`（繁体/台湾）`en` `ja` `ko` `fr` `de` `es`（各 123 个键，键名必须完全对齐）。
 - 消息查找方式：
   - sh / ps1：`msg <键> [参数…]`；cmd：`call :msg <键> <参数1> <参数2>`，结果存 `!M!`。
   - 动态内容用 `{1}`、`{2}` 占位符，按传入顺序替换。
@@ -56,9 +56,9 @@
 1. 从**当前会话** PATH 移除所有含 `nvm` / `node` 的路径项（清理环境变量）。
 2. 安装目录改为**脚本启动目录**下的 `nodejs/`（由 `.gitignore` 排除）。
 3. **跳过 nvm**，强制走官方下载方式。
-4. dsh 也隔离安装到脚本目录（`npm install -g --prefix <脚本目录>`），不碰用户全局。
+4. **后续 nrm/dsh 与普通模式逻辑一致**：前置清掉系统 nvm/node 项并 export 脚本目录 node 后，`npm install -g` 的全局前缀就是脚本目录 node 的全局（天然隔离），不碰用户全局。**注意**：必须在 debug 模式额外设会话级 `npm_config_prefix=$INSTALL_DIR`（与 `npm_config_registry` 一起），否则用户 `~/.npmrc` 里的 `prefix=`（如 nvm 管理的系统 node）会把全局安装导向用户全局，破坏隔离。
 5. 只更新当前会话 PATH，**不写**用户持久化 PATH。
-6. 只检查脚本目录：node 只看 `nodejs/`，dsh 只看脚本目录下的候选位置。
+6. 只检查脚本目录：node 只看 `nodejs/`；nrm/dsh 通过 PATH 检测（视角一致）。
 
 ## 注意事项
 

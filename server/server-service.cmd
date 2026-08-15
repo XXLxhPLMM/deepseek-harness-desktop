@@ -247,9 +247,7 @@ rem ============================================================================
 rem ---- message lookup: call :msg <key> <arg1> <arg2>; result in M ----
 :msg
 set "M=!MSG_%~1!"
-if "%~2"=="" goto :msg_ret
 set "M=!M:{1}=%~2!"
-if "%~3"=="" goto :msg_ret
 set "M=!M:{2}=%~3!"
 :msg_ret
 exit /b 0

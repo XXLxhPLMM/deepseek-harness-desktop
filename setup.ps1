@@ -20,7 +20,7 @@
 #   -Dir <路径>   指定 node 安装目录 (默认: 脚本目录下的 nodejs)
 #   -NoEnv        不修改 PATH 环境变量
 #   -DryRun       只检测, 不下载安装
-#   -Debug        调试模式: 清理环境变量, 只检查脚本目录, 安装到脚本目录
+#   -Debug        调试模式: 只清当前会话环境, 隔离安装到脚本目录, 不写全局
 #
 # 多语言: 提示/日志根据系统语言自动加载 locales/{zh,en,...}.lang,
 #         消息以 msg <键> [参数...] 查找, {1}/{2} 为占位符按序替换。
@@ -295,26 +295,8 @@ function Install-Node-Direct {
 }
 
 # ---------- 第 3 级: 检测/安装 dsh ----------
-# 普通模式: 检测 PATH 上的 dsh。调试模式: 只检查脚本目录。
+# 检测 PATH 上的 dsh (调试模式下 PATH 已指向脚本目录 node 的全局, 视角一致)。
 function Test-Dsh {
-    if ($ArgDebug) {
-        foreach ($cand in @(
-            (Join-Path $Script:ScriptDir "node_modules\.bin\dsh"),
-            (Join-Path $Script:ScriptDir "bin\dsh"),
-            (Join-Path $Script:ScriptDir "dsh"),
-            (Join-Path $Script:ScriptDir "dsh.cmd")
-        )) {
-            if (Test-Path $cand) {
-                $dir = Split-Path -Parent $cand
-                $env:Path = "$dir;$env:Path"
-                if (Get-Command dsh -ErrorAction SilentlyContinue) {
-                    Write-Ok (msg dsh_ok)
-                    return $true
-                }
-            }
-        }
-        return $false
-    }
     if (Get-Command dsh -ErrorAction SilentlyContinue) {
         Write-Ok (msg dsh_ok)
         return $true
@@ -323,21 +305,6 @@ function Test-Dsh {
 }
 
 function Install-Dsh {
-    if ($ArgDebug) {
-        # 调试模式: 安装到脚本目录 (隔离, 不碰用户全局)
-        # 提示: 调试模式: 安装 dsh 到脚本目录...
-        Write-Info (msg dsh_install_local)
-        $localDir = $Script:ScriptDir
-        $pkg = $Script:DshPkg
-        & npm install -g --prefix $localDir $pkg
-        if ($LASTEXITCODE -ne 0) {
-            Write-Fail (msg dsh_fail $pkg)
-            return $false
-        }
-        $env:Path = "$localDir;$env:Path"
-        return $true
-    }
-    # 普通模式: 全局安装
     # 提示: 未检测到 dsh，开始全局安装 @deepseek-ai/dsh ...
     Write-Info (msg dsh_not_found)
     Write-Info (msg dsh_install)
@@ -364,7 +331,7 @@ function Install-Dsh {
 }
 
 # ---------- npm 淘宝镜像 + nrm 全局安装 (第 2.5 级, 需 node/npm 就绪) ----------
-# 普通模式: 写用户 npm 配置 + 全局安装 nrm。调试模式: 会话级隔离, 不碰用户配置。
+# 调试模式仅以会话级 npm_config_registry 隔离源, 安装逻辑与普通模式一致。
 # nrm 安装失败不致命 (警告即可), 不影响核心工具链。
 function Ensure-NpmMirror {
     # 确保当前会话 npm 可用 (直接下载安装 node 后 PATH 尚未更新)
@@ -372,8 +339,13 @@ function Ensure-NpmMirror {
         $npmCand = Join-Path $Script:InstallDir "npm.cmd"
         if (Test-Path $npmCand) { $env:Path = "$($Script:InstallDir);$env:Path" }
     }
-    # 调试模式: 用会话级环境变量设置源, 不写用户 ~/.npmrc
-    if ($ArgDebug) { $env:npm_config_registry = $Script:NpmRegistry }
+    # 调试模式: 用会话级环境变量设置源/全局前缀, 不写用户 ~/.npmrc。
+    # 全局前缀必须一并覆盖, 否则 ~/.npmrc 里的 prefix= 会把 npm install -g
+    # 导向用户全局 (如 nvm 管理的系统 node), 破坏隔离。
+    if ($ArgDebug) {
+        $env:npm_config_registry = $Script:NpmRegistry
+        $env:npm_config_prefix = $Script:InstallDir
+    }
 
     if ($ArgDryRun) {
         if (Get-Command nrm -ErrorAction SilentlyContinue) { Write-Ok (msg nrm_ok) }
@@ -401,13 +373,8 @@ function Ensure-NpmMirror {
         Write-Ok (msg nrm_ok)
         return
     }
-    if ($ArgDebug) {
-        Write-Info (msg nrm_install_local)
-        & npm install -g --prefix $Script:ScriptDir $Script:NrmPkg 2>$null
-    } else {
-        Write-Info (msg nrm_install)
-        & npm install -g $Script:NrmPkg 2>$null
-    }
+    Write-Info (msg nrm_install)
+    & npm install -g $Script:NrmPkg 2>$null
     if ($LASTEXITCODE -ne 0) {
         Write-Warn (msg nrm_fail $Script:NrmPkg)
     } else {
@@ -454,9 +421,12 @@ function Remove-NodeFromPath {
         }
     }
     if ($removed.Count -gt 0) {
-        # 提示: 已从当前会话 PATH 移除:
-        Write-Warn (msg removed)
-        foreach ($r in $removed) { Write-Warn "  - $r" }
+        # report each unique removed path once (PATH may hold duplicates)
+        foreach ($r in ($removed | Select-Object -Unique)) {
+            Write-Warn ("  " + (msg removing $r))
+        }
+        # 提示: 已从当前会话 PATH 移除 nvm/node 相关项
+        Write-Info (msg removed)
         $env:Path = $kept -join ";"
     } else {
         # 提示: 当前会话 PATH 中未发现 nvm / node 相关项。

@@ -14,7 +14,7 @@ rem    setup.cmd                default install dir (script dir\nodejs)
 rem    setup.cmd --dir C:\path  custom install dir
 rem    setup.cmd --no-env       do not modify PATH
 rem    setup.cmd --dry-run      detect only, do not install
-rem    setup.cmd --debug        isolated verification install into script dir
+rem    setup.cmd --debug        isolated session-only install into script dir
 rem    setup.cmd --help         show help
 rem    setup.cmd /nopause       exit without pausing (for double-click)
 rem
@@ -176,9 +176,7 @@ rem ============================================================================
 rem ---- message lookup: call :msg <key> <arg1> <arg2>; result in M ----
 :msg
 set "M=!MSG_%~1!"
-if "%~2"=="" goto :msg_ret
 set "M=!M:{1}=%~2!"
-if "%~3"=="" goto :msg_ret
 set "M=!M:{2}=%~3!"
 :msg_ret
 exit /b 0
@@ -421,19 +419,9 @@ if exist "%INSTALL_DIR%\node.exe" (
 )
 
 rem ---- detect dsh: errorlevel 0=found, 1=not found ----
+rem (debug mode: PATH already points to the script-dir node global, same view)
 :detect_dsh
 set "DSH_FOUND=0"
-if "%DEBUG_MODE%"=="1" (
-    if exist "%SCRIPT_DIR%dsh.cmd" set "DSH_FOUND=1"
-    if exist "%SCRIPT_DIR%dsh.exe" set "DSH_FOUND=1"
-    if "%DSH_FOUND%"=="1" (
-        set "PATH=%SCRIPT_DIR%;%PATH%"
-        call :msg dsh_ok
-        echo [OK]    !M!
-        exit /b 0
-    )
-    exit /b 1
-)
 where dsh >nul 2>nul
 if not errorlevel 1 (
     call :msg dsh_ok
@@ -444,16 +432,6 @@ exit /b 1
 
 rem ---- install dsh ----
 :install_dsh
-if "%DEBUG_MODE%"=="1" (
-    call :msg dsh_install_local
-    echo [INFO] !M!
-    rem strip trailing backslash from SCRIPT_DIR so the closing quote is not escaped
-    set "D_DIR=%SCRIPT_DIR:~0,-1%"
-    npm install -g --prefix "%D_DIR%" "%DSH_PKG%"
-    if errorlevel 1 goto :dsh_fail
-    set "PATH=%SCRIPT_DIR%;%PATH%"
-    exit /b 0
-)
 call :msg dsh_not_found
 echo [INFO] !M!
 call :msg dsh_install
@@ -486,8 +464,12 @@ rem ensure npm is available in this session (PATH not yet updated after fresh no
 set "NPM_FOUND="
 where npm >nul 2>nul && set "NPM_FOUND=1"
 if not defined NPM_FOUND if exist "%INSTALL_DIR%\npm.cmd" set "PATH=%INSTALL_DIR%;%PATH%"
-rem debug mode: use a session-only env var, do not touch the user npm config
+rem debug mode: use session-only env vars, do not touch the user npm config.
+rem The global prefix must be overridden too, otherwise a prefix= in the user
+rem npmrc redirects npm install -g to the user global (e.g. the nvm-managed
+rem system node), breaking the isolation.
 if "%DEBUG_MODE%"=="1" set "npm_config_registry=%NPM_REGISTRY%"
+if "%DEBUG_MODE%"=="1" set "npm_config_prefix=%INSTALL_DIR%"
 
 if "%DRY_RUN%"=="1" (
     where nrm >nul 2>nul
@@ -539,16 +521,9 @@ if not errorlevel 1 (
     echo [OK]    !M!
     exit /b 0
 )
-if "%DEBUG_MODE%"=="1" (
-    call :msg nrm_install_local
-    echo [INFO] !M!
-    set "D_DIR=%SCRIPT_DIR:~0,-1%"
-    npm install -g --prefix "%D_DIR%" "%NRM_PKG%" >nul 2>nul
-) else (
-    call :msg nrm_install
-    echo [INFO] !M!
-    npm install -g "%NRM_PKG%" >nul 2>nul
-)
+call :msg nrm_install
+echo [INFO] !M!
+npm install -g "%NRM_PKG%" >nul 2>nul
 if errorlevel 1 (
     call :msg nrm_fail "%NRM_PKG%"
     echo [WARN] !M!
@@ -596,14 +571,17 @@ set "KEPT="
 set "REMOVED="
 for %%p in ("%PATH:;=" "%") do (
     set "PI=%%~p"
-    if /i not "!PI:nvm=!"=="!PI!" (
-        call :msg removing "!PI!"
-        echo [WARN] !M!
-        set "REMOVED=!REMOVED!;!PI!"
-    ) else if /i not "!PI:node=!"=="!PI!" (
-        call :msg removing "!PI!"
-        echo [WARN] !M!
-        set "REMOVED=!REMOVED!;!PI!"
+    set "MATCHED="
+    if /i not "!PI:nvm=!"=="!PI!" set "MATCHED=1"
+    if not defined MATCHED if /i not "!PI:node=!"=="!PI!" set "MATCHED=1"
+    if defined MATCHED (
+        rem report each unique removed path once (PATH may hold duplicates)
+        echo(!REMOVED! | findstr /I /C:";!PI!;" >nul 2>nul
+        if errorlevel 1 (
+            call :msg removing "!PI!"
+            echo [WARN] !M!
+            set "REMOVED=!REMOVED!;!PI!;"
+        )
     ) else (
         set "KEPT=!KEPT!;!PI!"
     )

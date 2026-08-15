@@ -143,7 +143,8 @@ exit /b 0
 :show_help
 call :msg sh_usage "%SELF%"
 echo !M!
-echo   --port ^<port^>    dsh service port (default: %DEFAULT_PORT%)
+call :msg sh_usage_port "%DEFAULT_PORT%"
+echo !M!
 call :msg sh_usage_debug
 echo !M!
 call :msg sh_usage_help
@@ -159,11 +160,10 @@ rem ============================================================================
 rem ---- message lookup: call :msg <key> <arg1> <arg2>; result in M ----
 :msg
 set "M=!MSG_%~1!"
-if "%~2"=="" goto :msg_ret
 set "M=!M:{1}=%~2!"
-if "%~3"=="" goto :msg_ret
 set "M=!M:{2}=%~3!"
 :msg_ret
+exit /b 0
 exit /b 0
 
 rem ---- read the --port value from the dsh-web task config (empty if none) ----

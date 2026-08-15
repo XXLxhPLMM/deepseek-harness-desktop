@@ -3,7 +3,7 @@ usage_usage=使用方法: {1} [選項]
 usage_dir=  --dir <路徑>   指定安裝目錄 (預設: 指令稿目錄下的 nodejs)
 usage_noenv=  --no-env       不修改 PATH 環境變數
 usage_dryrun=  --dry-run      只偵測, 不安裝
-usage_debug=  --debug        除錯模式: 清理環境變數, 只檢查指令稿目錄, 安裝到指令稿目錄
+usage_debug=  --debug        除錯模式: 只清當前工作階段環境, 隔離安裝到指令稿目錄, 不寫全域
 usage_help=  --help         顯示說明
 usage_nopause=  /nopause       結束時不暫停視窗 (雙擊執行用)
 usage_prefix=  參數支援 - 、--、/ 三種前綴，如 --help 或 /help
@@ -55,7 +55,6 @@ nvm_found=已偵測到 nvm
 dsh_ok=已偵測到 dsh
 dsh_not_found=未偵測到 dsh，開始全域安裝 @deepseek-ai/dsh ...
 dsh_install=npm install -g @deepseek-ai/dsh ...
-dsh_install_local=除錯模式: 安裝 dsh 到指令稿目錄...
 dsh_done=dsh 已全域安裝
 dsh_fail=dsh 安裝失敗: {1}
 
@@ -64,13 +63,13 @@ nrm_install=未偵測到 nrm，開始全域安裝 nrm ...
 nrm_ok=已偵測到 nrm
 nrm_done=nrm 已全域安裝
 nrm_fail=nrm 安裝失敗: {1}
-nrm_install_local=偵錯模式: 安裝 nrm 到腳本目錄...
 registry_set=已切換 npm 源到淘寶鏡像: {1}
 registry_already=npm 源已是淘寶鏡像: {1}
 registry_fail=設定 npm 源失敗: {1}
 
 # --- start.{sh,ps1,cmd} 共用鍵 (前綴 sh_) ---
 sh_usage=使用方法: {1} [選項]
+sh_usage_port=  --port <連接埠> dsh 服務連接埠 (預設: {1})
 sh_usage_debug=  --debug        除錯模式: 使用指令稿目錄下的 nodejs
 sh_usage_help=  --help         顯示說明
 sh_title==== deepseek harness 啟動器 ===

@@ -3,7 +3,7 @@ usage_usage=使用方法: {1} [オプション]
 usage_dir=  --dir <パス>   インストール先ディレクトリを指定 (既定: スクリプト配下の nodejs)
 usage_noenv=  --no-env       PATH を変更しない
 usage_dryrun=  --dry-run      検出のみでインストールしない
-usage_debug=  --debug        デバッグ: 環境変数をクリーンアップし、スクリプト配下のみ確認してインストール
+usage_debug=  --debug        デバッグ: セッション環境のみクリーンアップし、スクリプト配下に隔離インストール（グローバル変更なし）
 usage_help=  --help         ヘルプを表示
 usage_nopause=  /nopause       終了時に一時停止しない (ダブルクリック用)
 usage_prefix=  引数は - 、--、/ の接頭辞に対応 (例: --help または /help)
@@ -55,7 +55,6 @@ nvm_found=nvm を検出
 dsh_ok=dsh を検出
 dsh_not_found=dsh を検出できません。@deepseek-ai/dsh をグローバルにインストールします ...
 dsh_install=npm install -g @deepseek-ai/dsh ...
-dsh_install_local=デバッグ: dsh をスクリプト配下にインストール...
 dsh_done=dsh をグローバルにインストールしました
 dsh_fail=dsh のインストールに失敗: {1}
 
@@ -64,13 +63,13 @@ nrm_install=nrm が見つかりません。グローバルにインストール�
 nrm_ok=nrm を検出
 nrm_done=nrm をグローバルにインストールしました
 nrm_fail=nrm のインストールに失敗: {1}
-nrm_install_local=デバッグモード: スクリプトディレクトリに nrm をインストール中...
 registry_set=npm レジストリを淘宝ミラーに切り替えました: {1}
 registry_already=npm レジストリは既に淘宝ミラーです: {1}
 registry_fail=npm レジストリの設定に失敗: {1}
 
 # --- start.{sh,ps1,cmd} 共有キー (接頭辞 sh_) ---
 sh_usage=使用方法: {1} [オプション]
+sh_usage_port=  --port <ポート> dsh サービス ポート (既定: {1})
 sh_usage_debug=  --debug        デバッグ: スクリプト配下の nodejs を使用
 sh_usage_help=  --help         ヘルプを表示
 sh_title==== deepseek harness ランチャー ===

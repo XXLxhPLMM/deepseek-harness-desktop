@@ -3,7 +3,7 @@ usage_usage=사용법: {1} [옵션]
 usage_dir=  --dir <경로>   설치 디렉터리 지정 (기본: 스크립트 폴더의 nodejs)
 usage_noenv=  --no-env       PATH 를 수정하지 않음
 usage_dryrun=  --dry-run      검사만 하고 설치하지 않음
-usage_debug=  --debug        디버그: 환경 변수 정리, 스크립트 폴더만 확인 후 설치
+usage_debug=  --debug        디버그: 현재 세션 환경만 정리, 스크립트 폴더에 격리 설치, 전역 변경 없음
 usage_help=  --help         도움말 표시
 usage_nopause=  /nopause       종료 시 일시정지하지 않음 (더블클릭 실행용)
 usage_prefix=  인자는 - , -- , / 접두사를 지원합니다 (예: --help 또는 /help)
@@ -55,7 +55,6 @@ nvm_found=nvm 감지됨
 dsh_ok=dsh 감지됨
 dsh_not_found=dsh 가 감지되지 않았습니다. @deepseek-ai/dsh 를 전역 설치합니다 ...
 dsh_install=npm install -g @deepseek-ai/dsh ...
-dsh_install_local=디버그: dsh 를 스크립트 폴더에 설치...
 dsh_done=dsh 전역 설치 완료
 dsh_fail=dsh 설치 실패: {1}
 
@@ -64,13 +63,13 @@ nrm_install=nrm 이 감지되지 않았습니다. 전역으로 설치 중 ...
 nrm_ok=nrm 감지됨
 nrm_done=nrm 전역 설치 완료
 nrm_fail=nrm 설치 실패: {1}
-nrm_install_local=디버그 모드: 스크립트 디렉토리에 nrm 설치 중...
 registry_set=npm 레지스트리를 타오바오 미러로 전환했습니다: {1}
 registry_already=npm 레지스트리가 이미 타오바오 미러입니다: {1}
 registry_fail=npm 레지스트리 설정 실패: {1}
 
 # --- start.{sh,ps1,cmd} 공유 키 (접두사 sh_) ---
 sh_usage=사용법: {1} [옵션]
+sh_usage_port=  --port <포트>   dsh 서비스 포트 (기본: {1})
 sh_usage_debug=  --debug        디버그: 스크립트 폴더의 nodejs 사용
 sh_usage_help=  --help         도움말 표시
 sh_title==== deepseek harness 런처 ===
