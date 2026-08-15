@@ -25,7 +25,23 @@
 
 - `setup-node.sh`: `--dir <路径>` / `--no-env` / `--dry-run` / `--debug` / `--help`
 - `setup-node.ps1`: `-Dir <路径>` / `-NoEnv` / `-DryRun` / `-Debug` / `-Help`
-- `setup-node.cmd`: 透传参数给 ps1（`--debug` 等均可）；默认跑完暂停窗口，`/nopause` 静默。
+- `setup-node.cmd`: 独立 cmd 实现（不依赖 PowerShell 执行，仅用于语言检测）；参数与 sh 一致，额外支持 `/nopause` 静默（默认跑完暂停窗口）。
+
+## 多语言（i18n）
+
+- 提示/日志按系统语言自动加载 `locales/<lang>.lang`，**检测不到或未知语言时默认中文（zh）**。
+- 语言检测（三脚本一致，统一转小写再前缀匹配）：
+  - Windows 读 `InstalledUICulture`（如 `zh-CN`）——**不要用 `CurrentUICulture`**：在 `chcp 65001` 下会错误回退为 `en-US`（cmd 的 `chcp 65001` 也会持久改控制台代码页）。
+  - macOS/Linux 读 `$LANG`/`LC_ALL`。
+  - 前缀匹配：`zh-TW/HK/MO`→`zh-TW`（繁体），`zh`→`zh`（简体），`ja/ko/fr/de/es/en`→对应，其余→`zh`。
+  - `en` 需显式匹配，否则英文系统会落入默认中文。
+- 现有语言包：`zh`（简体）`zh-TW`（繁体/台湾）`en` `ja` `ko` `fr` `de` `es`（各 52 个键，键名必须完全对齐）。
+- 消息查找方式：
+  - sh / ps1：`msg <键> [参数…]`；cmd：`call :msg <键> <参数1> <参数2>`，结果存 `!M!`。
+  - 动态内容用 `{1}`、`{2}` 占位符，按传入顺序替换。
+- 新增语言：在 `locales/` 加一个 `<code>.lang`（UTF-8 **无 BOM**，`KEY=message` 每行一个，`#` 开头为注释），并同步在三脚本的 `detect_lang` 里加前缀匹配。
+- **`setup-node.cmd` 源码注释必须保持纯 ASCII**：cmd 会在 `chcp 65001` 生效前解析文件，含中文的多字节注释会导致解析错乱。
+- **cmd 语言检测不能用 `for /f … (`命令`)` 捕获 PowerShell 输出**：`chcp 65001` 下会读错输出；应让 PowerShell 写临时文件再用 `set /p` 读取。
 
 ## 调试模式（`--debug` / `-Debug`）
 

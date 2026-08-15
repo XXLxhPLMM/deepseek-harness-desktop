@@ -1,0 +1,53 @@
+# Paquete de idioma español - cargado por setup-node.{sh,ps1,cmd} según el idioma del sistema
+usage_usage=Uso: {1} [opciones]
+usage_dir=  --dir <ruta>   especificar directorio de instalación (predet.: nodejs en el script)
+usage_noenv=  --no-env       no modificar PATH
+usage_dryrun=  --dry-run      solo detectar, no instalar
+usage_debug=  --debug        depurar: quitar nvm/node de PATH, instalar en el script
+usage_help=  --help         mostrar ayuda
+usage_nopause=  /nopause       no pausar al salir (para doble clic)
+usage_prefix=  los argumentos aceptan prefijos - , -- , / (p. ej. --help o /help)
+dir_need_path={1} requiere un valor de ruta
+unknown_arg=Argumento desconocido: {1}
+node_ok=Node.js {1} (>= {2}) detectado, no hay nada que hacer
+node_low=Node.js {1} detectado pero inferior a {2}, se necesita una versión nueva
+node_not_found=Node.js no detectado, iniciando instalación...
+nvm_using=nvm detectado, instalando Node.js {1} mediante nvm ...
+nvm_installed={1} ya instalado en nvm, cambiando...
+nvm_install_run=nvm install {1} ...
+nvm_use_run=nvm use {1} ...
+nvm_use_fail=nvm use puede requerir permisos de administrador. Ejecute manualmente: nvm use {1}
+os_unsupported=Sistema operativo no compatible: {1}
+arch_unsupported=Arquitectura no compatible: {1}
+platform=Plataforma: {1} / {2}
+downloading=Descargando {1} ...
+download_fail=Error de descarga: {1}
+mkdir=Creando directorio de instalación: {1}
+extracting=Extrayendo...
+extract_fail=Error de extracción: {1}
+installed=Node.js instalado en {1}
+exe_not_found=Extraído pero no se encontró el ejecutable. Compruebe {1}
+env_writing=Escribiendo configuración de variables de entorno...
+env_session_ok=Sesión actual actualizada: {1}
+profile_written=Escrito en {1}
+profile_skip={1} ya configurado, omitiendo
+winpath_updated=PATH de usuario de Windows actualizado (añadido {1})
+winpath_already=El PATH de usuario de Windows ya contiene {1}, omitiendo
+winpath_fail=Error al actualizar el PATH de usuario de Windows. Añada {1} manualmente
+debug_scan=Modo depuración: analizando entradas nvm / node del PATH...
+removing=  Eliminando: {1}
+removed=Entradas nvm/node eliminadas del PATH de la sesión actual
+nothing_removed=No se encontraron entradas nvm / node en el PATH de la sesión actual.
+main_title==== Comprobación e instalación del entorno Node.js ===
+debug_title==== Modo depuración activado: directorio de instalación = {1} ===
+dryrun_skip=Modo --dry-run, omitiendo instalación
+debug_skip_nvm=Modo depuración: omitiendo nvm, descarga oficial directa...
+nvm_fail_fallback=Error en la instalación de nvm, usando descarga oficial...
+no_nvm=nvm no detectado, usando descarga oficial...
+debug_session_only=Modo depuración: solo se actualiza el PATH de sesión, no persistente
+noenv_skip=--no-env especificado, omitiendo configuración de PATH
+noenv_manual=Añada {1} al PATH manualmente
+done=¡Listo! Reabra la terminal para aplicar los cambios.
+node_version=Versión actual de Node: {1}
+nvm_install_fail=Error en nvm install. Compruebe la red o la configuración de nvm.
+install_failed=Error al instalar Node.js. Compruebe la red e inténtelo de nuevo.

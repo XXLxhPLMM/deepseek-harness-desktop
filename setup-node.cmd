@@ -14,6 +14,10 @@ rem    setup-node.cmd --dry-run      detect only, do not install
 rem    setup-node.cmd --debug        isolated verification install
 rem    setup-node.cmd --help         show help
 rem    setup-node.cmd /nopause       exit without pausing (for double-click)
+rem
+rem  i18n: load locales/{zh,en,ja,ko,fr,de,es}.lang by system language,
+rem       default to Chinese (zh) when undetectable. Use:
+rem       call :msg <key> <arg1> <arg2> -> result stored in !M!
 rem ============================================================================
 setlocal EnableExtensions EnableDelayedExpansion
 
@@ -22,6 +26,7 @@ set "VERSION=v22.23.2"
 set "NVM_VERSION=22.23.2"
 set "MIN_MAJOR=22"
 set "BASE_URL=https://nodejs.org/dist"
+set "SELF=%~nx0"
 
 rem ---- defaults ----
 set "INSTALL_DIR=%SCRIPT_DIR%nodejs"
@@ -30,8 +35,28 @@ set "DRY_RUN=0"
 set "DEBUG_MODE=0"
 set "NO_PAUSE=0"
 
-rem Switch console to UTF-8 so output renders correctly (best effort)
+rem ---- language detection (default zh if undetectable; zh-TW for Traditional) ----
+rem Use PowerShell once to keep logic identical to sh/ps1. Falls back to zh if PS absent.
+rem NOTE: do NOT use `for /f ... (`command`)` here - under chcp 65001 cmd misreads the
+rem command output (e.g. "zh" -> "en"). Capture to a temp file and read via set /p instead.
+set "LANG=zh"
+set "LANGTMP=%TEMP%\sn_lang.txt"
+powershell -NoProfile -Command "$c=[System.Globalization.CultureInfo]::InstalledUICulture.Name.ToLower(); if($c -match '^zh[-_]?(tw|hk|mo)'){$r='zh-TW'}elseif($c -match '^zh'){$r='zh'}elseif($c -match '^ja'){$r='ja'}elseif($c -match '^ko'){$r='ko'}elseif($c -match '^fr'){$r='fr'}elseif($c -match '^de'){$r='de'}elseif($c -match '^es'){$r='es'}elseif($c -match '^en'){$r='en'}else{$r='zh'}; [System.IO.File]::WriteAllText($env:LANGTMP, $r)" 2>nul
+if exist "%LANGTMP%" set /p LANG=<"%LANGTMP%"
+del /f /q "%LANGTMP%" >nul 2>nul
+
+rem ---- switch console to UTF-8 AFTER detection ----
+rem Use InstalledUICulture (system UI language) so detection is not affected by chcp;
+rem CurrentUICulture would wrongly fall back to en-US under chcp 65001.
 chcp 65001 >nul 2>nul
+
+rem ---- load language file into MSG_<key> ----
+set "LANG_FILE=%SCRIPT_DIR%locales\%LANG%.lang"
+if not exist "%LANG_FILE%" (
+    echo [WARN] Language file missing, fallback to Chinese.
+    set "LANG_FILE=%SCRIPT_DIR%locales\zh.lang"
+)
+for /f "usebackq eol=# tokens=1,* delims==" %%a in ("%LANG_FILE%") do set "MSG_%%a=%%b"
 
 rem ---- parse arguments ----
 set "ARG_DIR="
@@ -51,11 +76,12 @@ if /i "%~1"=="--help"      goto :show_help
 if /i "%~1"=="/help"       goto :show_help
 if /i "%~1"=="-h"          goto :show_help
 if /i "%~1"=="/nopause"    set "NO_PAUSE=1"    & shift /1 & goto :parse
-echo [WARN] Unknown argument: %~1
+call :msg unknown_arg "%~1"
+echo [WARN] !M!
 shift /1
 goto :parse
 :set_dir
-if "%~2"=="" ( echo [ERROR] --dir requires a path value & exit /b 1 )
+if "%~2"=="" ( call :msg dir_need_path "%~1" & echo [ERROR] !M! & exit /b 1 )
 set "ARG_DIR=%~2"
 set "HAS_DIR=1"
 shift /1
@@ -65,12 +91,9 @@ goto :parse
 
 if "%HAS_DIR%"=="1" set "INSTALL_DIR=%ARG_DIR%"
 
-rem ---- command aliases (allow --flag style) ----
-set "P_ECHO=echo"
-set "P_EXIT=exit /b"
-
 if "%DEBUG_MODE%"=="1" (
-    echo [INFO] === Debug mode enabled: install dir = %INSTALL_DIR% ===
+    call :msg debug_title "%INSTALL_DIR%"
+    echo [INFO] !M!
     call :remove_node_from_path
 )
 
@@ -80,18 +103,19 @@ if errorlevel 2 exit /b 0
 if errorlevel 1 goto :need_install
 
 :already_ok
-echo [OK]    Node.js is already installed and satisfies the requirement.
 exit /b 0
 
 :need_install
 if "%DRY_RUN%"=="1" (
-    echo [INFO] --dry-run mode, skipping installation
+    call :msg dryrun_skip
+    echo [INFO] !M!
     exit /b 1
 )
 
 rem ---- choose install path ----
 if "%DEBUG_MODE%"=="1" (
-    echo [INFO] Debug mode: skipping nvm, direct download...
+    call :msg debug_skip_nvm
+    echo [INFO] !M!
     call :download_and_extract
     if errorlevel 1 goto :install_failed
     goto :env_setup
@@ -101,42 +125,56 @@ rem ---- try nvm ----
 call :detect_nvm
 if errorlevel 1 goto :no_nvm
 
-echo [INFO] nvm detected, installing Node.js %NVM_VERSION% via nvm...
+call :msg nvm_using "%NVM_VERSION%"
+echo [INFO] !M!
 call :nvm_install
 if errorlevel 1 (
-    echo [WARN] nvm install failed, falling back to official download...
+    call :msg nvm_fail_fallback
+    echo [WARN] !M!
     goto :no_nvm
 )
 set "INSTALLED_BY_NVM=1"
 goto :env_setup
 
 :no_nvm
-echo [INFO] nvm not detected, using official download...
+call :msg no_nvm
+echo [INFO] !M!
 call :download_and_extract
 if errorlevel 1 goto :install_failed
 
 :install_failed
-echo [ERROR] Node.js installation failed. Please check your network.
+call :msg install_failed
+echo [ERROR] !M!
 exit /b 1
 
 :env_setup
 if "%DEBUG_MODE%"=="1" (
-    echo [INFO] Debug mode: only updating current session PATH, not persistent.
+    call :msg debug_session_only
+    echo [INFO] !M!
     set "PATH=%INSTALL_DIR%;%PATH%"
     goto :done
 )
 if "%DO_ENV%"=="0" (
-    echo [INFO] --no-env specified, skipping PATH configuration.
-    echo [WARN] Please add %INSTALL_DIR% to your PATH manually.
+    call :msg noenv_skip
+    echo [INFO] !M!
+    call :msg noenv_manual "%INSTALL_DIR%"
+    echo [WARN] !M!
     goto :done
 )
 call :configure_env
 
 :done
 echo.
-echo [OK]    Done! Please reopen your terminal for changes to take effect.
+call :msg done
+echo [OK]    !M!
 for /f "usebackq delims=" %%v in (`node --version 2^>nul`) do set "CUR_VER=%%v"
-if defined CUR_VER ( echo [INFO] Current Node version: %CUR_VER% ) else ( echo [INFO] Current Node version: unknown )
+if defined CUR_VER (
+    call :msg node_version "%CUR_VER%"
+    echo [INFO] !M!
+) else (
+    call :msg node_version "unknown"
+    echo [INFO] !M!
+)
 
 goto :finish
 
@@ -144,24 +182,37 @@ rem ============================================================================
 rem  Subroutines
 rem ============================================================================
 
+rem ---- message lookup: call :msg <key> <arg1> <arg2>; result in M ----
+:msg
+set "M=!MSG_%~1!"
+if "%~2"=="" goto :msg_ret
+set "M=!M:{1}=%~2!"
+if "%~3"=="" goto :msg_ret
+set "M=!M:{2}=%~3!"
+:msg_ret
+exit /b 0
+
 rem ---- detect Node: errorlevel 2=already ok, 1=needs install ----
 :detect_node
 where node >nul 2>nul
 if errorlevel 1 goto :no_node
 for /f "usebackq delims=" %%v in (`node --version 2^>nul`) do set "NV=%%v"
 if not defined NV goto :no_node
-set "NODE_VERSION=%NV%"
+set "NODE_VERSION=%NV:~1%"
 set "MAJOR=%NV:~1%"
 for /f "tokens=1 delims=." %%m in ("%MAJOR%") do set "NODE_MAJOR=%%m"
 if not defined NODE_MAJOR goto :no_node
 if %NODE_MAJOR% GEQ %MIN_MAJOR% goto :node_ok
-echo [WARN] Detected Node.js %NODE_VERSION%, but below %MIN_MAJOR%, need to install new version.
+call :msg node_low "%NODE_VERSION%" "%MIN_MAJOR%"
+echo [WARN] !M!
 exit /b 1
 :node_ok
-echo [OK]    Detected Node.js %NODE_VERSION%, nothing to do.
+call :msg node_ok "%NODE_VERSION%" "%MIN_MAJOR%"
+echo [OK]    !M!
 exit /b 2
 :no_node
-echo [INFO] Node.js not detected, starting installation...
+call :msg node_not_found
+echo [INFO] !M!
 exit /b 1
 
 rem ---- detect nvm ----
@@ -177,15 +228,20 @@ rem ---- nvm install ----
 :nvm_install
 nvm list 2>nul | findstr /C:"%NVM_VERSION%" >nul
 if not errorlevel 1 (
-    echo [INFO] Node %NVM_VERSION% already installed in nvm, switching...
+    call :msg nvm_installed "%NVM_VERSION%"
+    echo [INFO] !M!
 ) else (
-    echo [INFO] Running: nvm install %NVM_VERSION% ...
+    call :msg nvm_install_run "%NVM_VERSION%"
+    echo [INFO] !M!
     nvm install %NVM_VERSION%
     if errorlevel 1 exit /b 1
 )
+call :msg nvm_use_run "%NVM_VERSION%"
+echo [INFO] !M!
 nvm use %NVM_VERSION%
 if errorlevel 1 (
-    echo [WARN] nvm use may require administrator rights. Run manually: nvm use %NVM_VERSION%
+    call :msg nvm_use_fail "%NVM_VERSION%"
+    echo [WARN] !M!
     exit /b 1
 )
 exit /b 0
@@ -200,7 +256,8 @@ exit /b 0
 rem ---- download zip then extract to INSTALL_DIR ----
 :download_and_extract
 call :detect_arch
-echo [INFO] Platform: win / %NODE_ARCH%
+call :msg platform "win" "%NODE_ARCH%"
+echo [INFO] !M!
 set "DIST_URL=%BASE_URL%/%VERSION%/node-%VERSION%-win-%NODE_ARCH%.zip"
 
 rem locate a downloader: curl.exe > certutil > bitsadmin
@@ -220,31 +277,37 @@ if not defined DL_TOOL (
 set "TMPZIP=%SCRIPT_DIR%node-%VERSION%-win-%NODE_ARCH%.zip"
 if exist "%TMPZIP%" del /f /q "%TMPZIP%" >nul 2>nul
 
-echo [INFO] Downloading %DIST_URL% ...
+call :msg downloading "%DIST_URL%"
+echo [INFO] !M!
 if "%DL_TOOL%"=="curl" (
     curl.exe -L --fail --progress-bar -o "%TMPZIP%" "%DIST_URL%"
     if errorlevel 1 (
-        echo [ERROR] Download failed: %DIST_URL%
+        call :msg download_fail "%DIST_URL%"
+        echo [ERROR] !M!
         exit /b 1
     )
 ) else if "%DL_TOOL%"=="certutil" (
     certutil -urlcache -split -f "%DIST_URL%" "%TMPZIP%" >nul
     if errorlevel 1 (
-        echo [ERROR] Download failed: %DIST_URL%
+        call :msg download_fail "%DIST_URL%"
+        echo [ERROR] !M!
         exit /b 1
     )
 ) else (
     bitsadmin /transfer dsh /download /priority normal "%DIST_URL%" "%TMPZIP%" >nul
     if errorlevel 1 (
-        echo [ERROR] Download failed: %DIST_URL%
+        call :msg download_fail "%DIST_URL%"
+        echo [ERROR] !M!
         exit /b 1
     )
 )
 
-echo [INFO] Creating install directory: %INSTALL_DIR%
+call :msg mkdir "%INSTALL_DIR%"
+echo [INFO] !M!
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
 
-echo [INFO] Extracting...
+call :msg extracting
+echo [INFO] !M!
 rem Prefer the system tar (libarchive), as PATH may contain a GNU tar that
 rem misinterprets "C:\..." paths as a remote address.
 set "SYS_TAR=%SystemRoot%\System32\tar.exe"
@@ -264,7 +327,8 @@ if exist "%EXTRACT_DIR%" rmdir /s /q "%EXTRACT_DIR%" >nul 2>nul
 mkdir "%EXTRACT_DIR%"
 "%TAR_CMD%" -xf "%TMPZIP%" -C "%EXTRACT_DIR%"
 if errorlevel 1 (
-    echo [ERROR] Extraction failed.
+    call :msg extract_fail "%TMPZIP%"
+    echo [ERROR] !M!
     rmdir /s /q "%EXTRACT_DIR%" >nul 2>nul
     del /f /q "%TMPZIP%" >nul 2>nul
     exit /b 1
@@ -281,15 +345,19 @@ rmdir /s /q "%EXTRACT_DIR%" >nul 2>nul
 del /f /q "%TMPZIP%" >nul 2>nul
 
 if exist "%INSTALL_DIR%\node.exe" (
-    echo [OK]    Node.js installed to %INSTALL_DIR%
+    call :msg installed "%INSTALL_DIR%"
+    echo [OK]    !M!
     exit /b 0
 ) else (
-    echo [WARN] Extracted, but node.exe not found. Please check %INSTALL_DIR%
+    call :msg exe_not_found "%INSTALL_DIR%"
+    echo [WARN] !M!
     exit /b 0
 )
 
 rem ---- configure PATH (user + current session) ----
 :configure_env
+call :msg env_writing
+echo [INFO] !M!
 set "CURRENT_PATH=%PATH%"
 echo %CURRENT_PATH% | findstr /I /C:"%INSTALL_DIR%" >nul
 if errorlevel 1 (
@@ -297,32 +365,40 @@ if errorlevel 1 (
     if not errorlevel 1 (
         setx PATH "%INSTALL_DIR%;%PATH%" >nul 2>nul
         if errorlevel 1 (
-            echo [WARN] setx failed, please add %INSTALL_DIR% to PATH manually.
+            call :msg winpath_fail "%INSTALL_DIR%"
+            echo [WARN] !M!
         ) else (
-            echo [OK]    Added %INSTALL_DIR% to user PATH.
+            call :msg winpath_updated "%INSTALL_DIR%"
+            echo [OK]    !M!
         )
     ) else (
-        echo [WARN] setx not found, please add %INSTALL_DIR% to PATH manually.
+        call :msg winpath_fail "%INSTALL_DIR%"
+        echo [WARN] !M!
     )
 ) else (
-    echo [INFO] PATH already contains %INSTALL_DIR%, skipping.
+    call :msg winpath_already "%INSTALL_DIR%"
+    echo [INFO] !M!
 )
 set "PATH=%INSTALL_DIR%;%PATH%"
-echo [OK]    Current session PATH updated.
+call :msg env_session_ok "%INSTALL_DIR%;%PATH%"
+echo [OK]    !M!
 exit /b 0
 
 rem ---- debug mode: strip nvm/node entries from current PATH ----
 :remove_node_from_path
-echo [INFO] Debug mode: scanning PATH for nvm/node entries...
+call :msg debug_scan
+echo [INFO] !M!
 set "KEPT="
 set "REMOVED="
 for %%p in ("%PATH:;=" "%") do (
     set "PI=%%~p"
     if /i not "!PI:nvm=!"=="!PI!" (
-        echo [WARN]  Removing: !PI!
+        call :msg removing "!PI!"
+        echo [WARN] !M!
         set "REMOVED=!REMOVED!;!PI!"
     ) else if /i not "!PI:node=!"=="!PI!" (
-        echo [WARN]  Removing: !PI!
+        call :msg removing "!PI!"
+        echo [WARN] !M!
         set "REMOVED=!REMOVED!;!PI!"
     ) else (
         set "KEPT=!KEPT!;!PI!"
@@ -330,20 +406,23 @@ for %%p in ("%PATH:;=" "%") do (
 )
 if defined REMOVED (
     set "PATH=!KEPT!"
-    echo [INFO] Removed nvm/node entries from current session PATH.
+    call :msg removed
+    echo [INFO] !M!
 ) else (
-    echo [INFO] No nvm/node entries found in current session PATH.
+    call :msg nothing_removed
+    echo [INFO] !M!
 )
 exit /b 0
 
 :show_help
-echo Usage: setup-node.cmd [options]
-echo   --dir ^<path^>    custom install directory (default: nodejs under script dir)
-echo   --no-env        do not modify PATH
-echo   --dry-run       detect only, do not install
-echo   --debug         isolated verification install into script dir\nodejs
-echo   --help          show this help
-echo   /nopause        exit without pausing the window
+call :msg usage_usage "%SELF%"
+echo !M!
+call :msg usage_dir & echo !M!
+call :msg usage_noenv & echo !M!
+call :msg usage_dryrun & echo !M!
+call :msg usage_debug & echo !M!
+call :msg usage_help & echo !M!
+call :msg usage_nopause & echo !M!
 exit /b 0
 
 :finish

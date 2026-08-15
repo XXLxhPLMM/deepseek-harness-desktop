@@ -1,0 +1,53 @@
+# 繁體中文（台灣）語言包 - 由 setup-node.{sh,ps1,cmd} 依系統語言載入
+usage_usage=使用方法: {1} [選項]
+usage_dir=  --dir <路徑>   指定安裝目錄 (預設: 指令稿目錄下的 nodejs)
+usage_noenv=  --no-env       不修改 PATH 環境變數
+usage_dryrun=  --dry-run      只偵測, 不安裝
+usage_debug=  --debug        除錯: 從 PATH 移除 nvm/node, 安裝到指令稿目錄
+usage_help=  --help         顯示說明
+usage_nopause=  /nopause       結束時不暫停視窗 (雙擊執行用)
+usage_prefix=  參數支援 - 、--、/ 三種前綴，如 --help 或 /help
+dir_need_path={1} 需要路徑參數
+unknown_arg=未知參數: {1}
+node_ok=已偵測到 Node.js {1} (>= {2})，無需安裝
+node_low=偵測到 Node.js {1}，但版本低於 {2}，需要安裝新版本
+node_not_found=未偵測到 Node.js，開始安裝...
+nvm_using=偵測到 nvm，使用 nvm 安裝 Node.js {1} ...
+nvm_installed=nvm 中已安裝 {1}，直接切換...
+nvm_install_run=nvm install {1} ...
+nvm_use_run=nvm use {1} ...
+nvm_use_fail=nvm use 可能需要系統管理員權限。請手動執行: nvm use {1}
+os_unsupported=不支援的作業系統: {1}
+arch_unsupported=不支援的架構: {1}
+platform=平台: {1} / {2}
+downloading=下載 {1} ...
+download_fail=下載失敗: {1}
+mkdir=建立安裝目錄: {1}
+extracting=解壓中...
+extract_fail=解壓失敗: {1}
+installed=Node.js 已安裝到 {1}
+exe_not_found=解壓完成，但找不到可執行檔，請檢查 {1}
+env_writing=寫入環境變數設定...
+env_session_ok=目前工作階段已生效: {1}
+profile_written=已寫入 {1}
+profile_skip={1} 已包含設定，略過
+winpath_updated=已更新 Windows 使用者 PATH (新增 {1})
+winpath_already=Windows 使用者 PATH 已包含 {1}，略過
+winpath_fail=更新 Windows 使用者 PATH 失敗，請手動新增 {1}
+debug_scan=除錯模式: 偵測目前 PATH 中的 nvm / node 相關路徑...
+removing=  移除: {1}
+removed=已從目前工作階段 PATH 移除 nvm/node 相關項目
+nothing_removed=目前工作階段 PATH 中未發現 nvm / node 相關項目。
+main_title==== Node.js 環境偵測與安裝 ===
+debug_title==== 除錯模式啟用: 安裝目錄 = {1} ===
+dryrun_skip=--dry-run 模式，略過安裝
+debug_skip_nvm=除錯模式: 略過 nvm，直接官方下載...
+nvm_fail_fallback=nvm 安裝失敗，改走官方下載方式...
+no_nvm=未偵測到 nvm，使用官方下載方式...
+debug_session_only=除錯模式: 僅更新目前工作階段 PATH，不寫入使用者永久 PATH
+noenv_skip=--no-env 已指定，略過環境變數設定
+noenv_manual=請手動將 {1} 加入 PATH
+done=完成! 請重新開啟終端機使設定生效。
+node_version=目前 Node 版本: {1}
+nvm_install_fail=nvm install 失敗，請檢查網路或 nvm 設定。
+install_failed=Node.js 安裝失敗，請檢查網路後重試。

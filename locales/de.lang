@@ -1,0 +1,53 @@
+# Deutsches Sprachpaket - von setup-node.{sh,ps1,cmd} je nach Systemsprache geladen
+usage_usage=Verwendung: {1} [Optionen]
+usage_dir=  --dir <Pfad>   Installationsverzeichnis angeben (Standard: nodejs im Skriptordner)
+usage_noenv=  --no-env       PATH nicht ändern
+usage_dryrun=  --dry-run      nur prüfen, nicht installieren
+usage_debug=  --debug        Debug: nvm/node aus PATH entfernen, ins Skriptverzeichnis installieren
+usage_help=  --help         Hilfe anzeigen
+usage_nopause=  /nopause       ohne Pause beenden (für Doppelklick)
+usage_prefix=  Argumente akzeptieren - , -- , / Präfixe (z. B. --help oder /help)
+dir_need_path={1} benötigt einen Pfadwert
+unknown_arg=Unbekanntes Argument: {1}
+node_ok=Node.js {1} (>= {2}) erkannt, nichts zu tun
+node_low=Node.js {1} erkannt, aber unter {2}, neue Version erforderlich
+node_not_found=Node.js nicht erkannt, Installation wird gestartet...
+nvm_using=nvm erkannt, installiere Node.js {1} über nvm ...
+nvm_installed={1} bereits in nvm installiert, wechsle...
+nvm_install_run=nvm install {1} ...
+nvm_use_run=nvm use {1} ...
+nvm_use_fail=nvm use benötigt möglicherweise Administratorrechte. Manuell ausführen: nvm use {1}
+os_unsupported=Nicht unterstütztes Betriebssystem: {1}
+arch_unsupported=Nicht unterstützte Architektur: {1}
+platform=Plattform: {1} / {2}
+downloading=Lade {1} herunter ...
+download_fail=Download fehlgeschlagen: {1}
+mkdir=Erstelle Installationsverzeichnis: {1}
+extracting=Entpacke...
+extract_fail=Entpacken fehlgeschlagen: {1}
+installed=Node.js installiert nach {1}
+exe_not_found=Entpackt, aber ausführbare Datei nicht gefunden. Bitte {1} prüfen
+env_writing=Schreibe Umgebungsvariablen-Konfiguration...
+env_session_ok=Aktuelle Sitzung aktualisiert: {1}
+profile_written=Geschrieben nach {1}
+profile_skip={1} bereits konfiguriert, übersprungen
+winpath_updated=Windows-Benutzer-PATH aktualisiert ({1} hinzugefügt)
+winpath_already=Windows-Benutzer-PATH enthält {1} bereits, übersprungen
+winpath_fail=Aktualisierung des Windows-Benutzer-PATH fehlgeschlagen. {1} manuell hinzufügen
+debug_scan=Debug-Modus: suche nvm / node Einträge im PATH...
+removing=  Entferne: {1}
+removed=nvm/node-Einträge aus dem PATH der aktuellen Sitzung entfernt
+nothing_removed=Keine nvm / node Einträge im PATH der aktuellen Sitzung gefunden.
+main_title==== Node.js-Umgebungsprüfung und -installation ===
+debug_title==== Debug-Modus aktiviert: Installationsverzeichnis = {1} ===
+dryrun_skip=Modus --dry-run, Installation übersprungen
+debug_skip_nvm=Debug-Modus: nvm überspringen, offizieller Direkt-Download...
+nvm_fail_fallback=nvm-Installation fehlgeschlagen, Fallback auf offiziellen Download...
+no_nvm=nvm nicht erkannt, verwende offiziellen Download...
+debug_session_only=Debug-Modus: nur PATH der Sitzung aktualisiert, nicht dauerhaft
+noenv_skip=--no-env angegeben, PATH-Konfiguration übersprungen
+noenv_manual=Bitte {1} manuell zum PATH hinzufügen
+done=Fertig! Bitte öffnen Sie das Terminal erneut, um die Änderungen zu übernehmen.
+node_version=Aktuelle Node-Version: {1}
+nvm_install_fail=nvm install fehlgeschlagen. Netzwerk oder nvm-Konfiguration prüfen.
+install_failed=Node.js-Installation fehlgeschlagen. Netzwerk prüfen und erneut versuchen.

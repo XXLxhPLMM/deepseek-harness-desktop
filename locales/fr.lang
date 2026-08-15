@@ -1,0 +1,53 @@
+# Pack de langue française - chargé par setup-node.{sh,ps1,cmd} selon la langue système
+usage_usage=Usage : {1} [options]
+usage_dir=  --dir <chemin>  spécifier le répertoire d'installation (défaut : nodejs sous le script)
+usage_noenv=  --no-env       ne pas modifier PATH
+usage_dryrun=  --dry-run      détecter uniquement, ne pas installer
+usage_debug=  --debug        déboguer : retirer nvm/node de PATH, installer dans le script
+usage_help=  --help         afficher l'aide
+usage_nopause=  /nopause       ne pas mettre en pause à la fin (pour double-clic)
+usage_prefix=  les arguments acceptent les préfixes - , -- , / (ex. --help ou /help)
+dir_need_path={1} requiert une valeur de chemin
+unknown_arg=Argument inconnu : {1}
+node_ok=Node.js {1} (>= {2}) détecté, rien à faire
+node_low=Node.js {1} détecté mais inférieur à {2}, installation d'une nouvelle version nécessaire
+node_not_found=Node.js non détecté, démarrage de l'installation...
+nvm_using=nvm détecté, installation de Node.js {1} via nvm ...
+nvm_installed={1} déjà installé dans nvm, bascule...
+nvm_install_run=nvm install {1} ...
+nvm_use_run=nvm use {1} ...
+nvm_use_fail=nvm use peut nécessiter des droits administrateur. Exécutez manuellement : nvm use {1}
+os_unsupported=Système d'exploitation non pris en charge : {1}
+arch_unsupported=Architecture non prise en charge : {1}
+platform=Plateforme : {1} / {2}
+downloading=Téléchargement de {1} ...
+download_fail=Échec du téléchargement : {1}
+mkdir=Création du répertoire d'installation : {1}
+extracting=Extraction en cours...
+extract_fail=Échec de l'extraction : {1}
+installed=Node.js installé dans {1}
+exe_not_found=Extraction terminée mais exécutable introuvable. Vérifiez {1}
+env_writing=Écriture de la configuration des variables d'environnement...
+env_session_ok=Session actuelle mise à jour : {1}
+profile_written=Écrit dans {1}
+profile_skip={1} déjà configuré, ignoré
+winpath_updated=PATH utilisateur Windows mis à jour (ajout de {1})
+winpath_already=Le PATH utilisateur Windows contient déjà {1}, ignoré
+winpath_fail=Échec de la mise à jour du PATH utilisateur Windows. Ajoutez {1} manuellement
+debug_scan=Mode débogage : analyse des entrées nvm / node du PATH...
+removing=  Suppression : {1}
+removed=Entrées nvm/node retirées du PATH de la session courante
+nothing_removed=Aucune entrée nvm / node trouvée dans le PATH de la session courante.
+main_title==== Vérification et installation de l'environnement Node.js ===
+debug_title==== Mode débogage activé : répertoire d'installation = {1} ===
+dryrun_skip=Mode --dry-run, installation ignorée
+debug_skip_nvm=Mode débogage : saut de nvm, téléchargement officiel direct...
+nvm_fail_fallback=Échec de l'installation nvm, bascule vers le téléchargement officiel...
+no_nvm=nvm non détecté, utilisation du téléchargement officiel...
+debug_session_only=Mode débogage : mise à jour du PATH de session uniquement, pas de persistance
+noenv_skip=--no-env spécifié, configuration PATH ignorée
+noenv_manual=Veuillez ajouter {1} au PATH manuellement
+done=Terminé ! Veuillez rouvrir le terminal pour appliquer les changements.
+node_version=Version actuelle de Node : {1}
+nvm_install_fail=Échec de nvm install, vérifiez le réseau ou la configuration nvm.
+install_failed=Échec de l'installation de Node.js. Vérifiez le réseau et réessayez.

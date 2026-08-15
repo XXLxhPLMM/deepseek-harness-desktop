@@ -1,0 +1,53 @@
+# English language pack - loaded by setup-node.{sh,ps1,cmd} based on system language
+usage_usage=Usage: {1} [options]
+usage_dir=  --dir <path>   specify install dir (default: nodejs under script dir)
+usage_noenv=  --no-env       do not modify PATH
+usage_dryrun=  --dry-run      detect only, do not install
+usage_debug=  --debug        debug: strip nvm/node from PATH, install into script dir
+usage_help=  --help         show help
+usage_nopause=  /nopause        exit without pausing (for double-click)
+usage_prefix=  arguments accept -, --, / prefixes, e.g. --help or /help
+dir_need_path={1} requires a path value
+unknown_arg=Unknown argument: {1}
+node_ok=Detected Node.js {1} (>= {2}), nothing to do
+node_low=Detected Node.js {1}, but below {2}, need to install a new version
+node_not_found=Node.js not detected, starting installation...
+nvm_using=nvm detected, installing Node.js {1} via nvm ...
+nvm_installed=Node {1} already installed in nvm, switching...
+nvm_install_run=nvm install {1} ...
+nvm_use_run=nvm use {1} ...
+nvm_use_fail=nvm use may require administrator rights. Run manually: nvm use {1}
+os_unsupported=Unsupported OS: {1}
+arch_unsupported=Unsupported arch: {1}
+platform=Platform: {1} / {2}
+downloading=Downloading {1} ...
+download_fail=Download failed: {1}
+mkdir=Creating install directory: {1}
+extracting=Extracting...
+extract_fail=Extraction failed: {1}
+installed=Node.js installed to {1}
+exe_not_found=Extracted, but executable not found. Please check {1}
+env_writing=Writing environment variable configuration...
+env_session_ok=Current session updated: {1}
+profile_written=Written to {1}
+profile_skip={1} already configured, skipping
+winpath_updated=Updated Windows user PATH (added {1})
+winpath_already=Windows user PATH already contains {1}, skipping
+winpath_fail=Failed to update Windows user PATH. Add {1} manually
+debug_scan=Debug mode: scanning PATH for nvm / node entries...
+removing=  Removing: {1}
+removed=Removed nvm/node entries from current session PATH
+nothing_removed=No nvm / node entries found in current session PATH.
+main_title==== Node.js environment check & install ===
+debug_title==== Debug mode enabled: install dir = {1} ===
+dryrun_skip=--dry-run mode, skipping installation
+debug_skip_nvm=Debug mode: skipping nvm, direct official download...
+nvm_fail_fallback=nvm install failed, falling back to official download...
+no_nvm=nvm not detected, using official download...
+debug_session_only=Debug mode: only updating current session PATH, not persistent
+noenv_skip=--no-env specified, skipping PATH configuration
+noenv_manual=Please add {1} to PATH manually
+done=Done! Please reopen your terminal for changes to take effect.
+node_version=Current Node version: {1}
+nvm_install_fail=nvm install failed, please check network or nvm configuration.
+install_failed=Node.js installation failed. Please check your network and retry.

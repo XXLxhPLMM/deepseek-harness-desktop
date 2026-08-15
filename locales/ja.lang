@@ -1,0 +1,53 @@
+# 日本語言語パック - システム言語に応じて setup-node.{sh,ps1,cmd} が読み込む
+usage_usage=使用方法: {1} [オプション]
+usage_dir=  --dir <パス>   インストール先ディレクトリを指定 (既定: スクリプト配下の nodejs)
+usage_noenv=  --no-env       PATH を変更しない
+usage_dryrun=  --dry-run      検出のみでインストールしない
+usage_debug=  --debug        デバッグ: PATH から nvm/node を除去し、スクリプト配下にインストール
+usage_help=  --help         ヘルプを表示
+usage_nopause=  /nopause       終了時に一時停止しない (ダブルクリック用)
+usage_prefix=  引数は - 、--、/ の接頭辞に対応 (例: --help または /help)
+dir_need_path={1} にはパス引数が必要です
+unknown_arg=不明な引数: {1}
+node_ok=Node.js {1} (>= {2}) を検出しました。インストール不要です
+node_low=Node.js {1} を検出しましたが {2} 未満のため、新しいバージョンのインストールが必要です
+node_not_found=Node.js を検出できません。インストールを開始します...
+nvm_using=nvm を検出しました。nvm で Node.js {1} をインストールします ...
+nvm_installed=nvm に {1} は既にあります。切り替えます...
+nvm_install_run=nvm install {1} ...
+nvm_use_run=nvm use {1} ...
+nvm_use_fail=nvm use には管理者権限が必要な場合があります。手動で実行してください: nvm use {1}
+os_unsupported=サポートされていない OS: {1}
+arch_unsupported=サポートされていないアーキテクチャ: {1}
+platform=プラットフォーム: {1} / {2}
+downloading={1} をダウンロード中 ...
+download_fail=ダウンロードに失敗: {1}
+mkdir=インストール先ディレクトリを作成中: {1}
+extracting=展開中...
+extract_fail=展開に失敗: {1}
+installed=Node.js を {1} にインストールしました
+exe_not_found=展開は完了しましたが実行ファイルが見つかりません。{1} を確認してください
+env_writing=環境変数の設定を書き込み中...
+env_session_ok=現在のセッションに適用: {1}
+profile_written={1} に書き込みました
+profile_skip={1} は設定済みのためスキップ
+winpath_updated=Windows ユーザー PATH を更新しました ({1} を追加)
+winpath_already=Windows ユーザー PATH は既に {1} を含みます。スキップ
+winpath_fail=Windows ユーザー PATH の更新に失敗。手動で {1} を追加してください
+debug_scan=デバッグ: 現在の PATH から nvm / node の項目を確認中...
+removing=  除去: {1}
+removed=現在のセッション PATH から nvm/node の項目を除去しました
+nothing_removed=現在のセッション PATH に nvm / node の項目はありません。
+main_title==== Node.js 環境の確認とインストール ===
+debug_title==== デバッグモード有効: インストール先 = {1} ===
+dryrun_skip=--dry-run モードのためインストールをスキップ
+debug_skip_nvm=デバッグ: nvm をスキップし公式から直接ダウンロード...
+nvm_fail_fallback=nvm のインストールに失敗。公式からのダウンロードにフォールバック...
+no_nvm=nvm がありません。公式からのダウンロードを使用...
+debug_session_only=デバッグ: 現在のセッション PATH のみ更新し、永続化しません
+noenv_skip=--no-env のため PATH 設定をスキップ
+noenv_manual={1} を手動で PATH に追加してください
+done=完了! 変更を反映するにはターミナルを開き直してください。
+node_version=現在の Node バージョン: {1}
+nvm_install_fail=nvm install に失敗。ネットワークまたは nvm 設定を確認してください。
+install_failed=Node.js のインストールに失敗。ネットワークを確認して再試行してください。

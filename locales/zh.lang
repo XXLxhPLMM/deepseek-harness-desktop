@@ -1,0 +1,53 @@
+# 简体中文语言包 - 由 setup-node.{sh,ps1,cmd} 按系统语言加载
+usage_usage=用法: {1} [选项]
+usage_dir=  --dir <路径>   指定安装目录 (默认: 脚本目录下的 nodejs)
+usage_noenv=  --no-env       不修改 PATH 环境变量
+usage_dryrun=  --dry-run      只检测, 不下载安装
+usage_debug=  --debug        调试模式: 从当前会话 PATH 移除 nvm/node 相关项, 安装到脚本目录
+usage_help=  --help         显示帮助
+usage_nopause=  /nopause       退出时不暂停窗口 (双击运行时用)
+usage_prefix=  参数支持 - 、--、/ 三种前缀，如 --help 或 /help
+dir_need_path={1} 需要路径参数
+unknown_arg=未知参数: {1}
+node_ok=已检测到 Node.js {1} (>= {2})，无需安装
+node_low=检测到 Node.js {1}，但版本低于 {2}，需要安装新版本
+node_not_found=未检测到 Node.js，开始安装...
+nvm_using=检测到 nvm，使用 nvm 安装 Node.js {1} ...
+nvm_installed=nvm 中已安装 {1}，直接切换...
+nvm_install_run=nvm install {1} ...
+nvm_use_run=nvm use {1} ...
+nvm_use_fail=nvm use 可能需要管理员权限。请手动运行: nvm use {1}
+os_unsupported=不支持的操作系统: {1}
+arch_unsupported=不支持的架构: {1}
+platform=平台: {1} / {2}
+downloading=下载 {1} ...
+download_fail=下载失败: {1}
+mkdir=创建安装目录: {1}
+extracting=解压中...
+extract_fail=解压失败: {1}
+installed=Node.js 已安装到 {1}
+exe_not_found=解压完成，但未找到可执行文件，请检查 {1}
+env_writing=写入环境变量配置...
+env_session_ok=当前会话已生效: {1}
+profile_written=已写入 {1}
+profile_skip={1} 已包含配置，跳过
+winpath_updated=已更新 Windows 用户 PATH (添加 {1})
+winpath_already=Windows 用户 PATH 已包含 {1}，跳过
+winpath_fail=更新 Windows 用户 PATH 失败，请手动添加 {1}
+debug_scan=调试模式: 检测当前 PATH 中的 nvm / node 相关路径...
+removing=  移除: {1}
+removed=已从当前会话 PATH 移除 nvm/node 相关项
+nothing_removed=当前会话 PATH 中未发现 nvm / node 相关项。
+main_title==== Node.js 环境检测与安装 ===
+debug_title==== 调试模式启用: 安装目录 = {1} ===
+dryrun_skip=--dry-run 模式，跳过安装
+debug_skip_nvm=调试模式: 跳过 nvm，直接官方下载...
+nvm_fail_fallback=nvm 安装失败，回退到官方下载方式...
+no_nvm=未检测到 nvm，使用官方下载方式...
+debug_session_only=调试模式: 仅更新当前会话 PATH，不写用户持久化 PATH
+noenv_skip=--no-env 已指定，跳过环境变量配置
+noenv_manual=请手动将 {1} 加入 PATH
+done=完成! 请重新打开终端使配置生效。
+node_version=当前 Node 版本: {1}
+nvm_install_fail=nvm install 失败，请检查网络或 nvm 配置。
+install_failed=Node.js 安装失败，请检查网络后重试。
