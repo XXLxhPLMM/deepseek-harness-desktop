@@ -117,9 +117,10 @@ call :svc_running
 if "%RUNNING%"=="1" goto :service_running
 
 rem ---- start the service (registered -> start; not registered -> install & start) ----
-rem 不用 call 进入子程序再 goto 到其它 label (会破坏 cmd 的 call 返回栈,
-rem 产生 "/goto 不是内部或外部命令"); 也不在括号块内调 server-service.cmd
-rem (其内部用 goto, 会破坏块/goto 上下文)。全部在主流程平铺 + goto 分发。
+rem Do NOT call a subroutine and then goto other labels (it corrupts cmd's call
+rem return stack, causing "/goto is not recognized"). Also do NOT call
+rem server-service.cmd inside a parenthesized block (it uses goto internally and
+rem breaks the block/goto context). Keep it flat in main flow with goto dispatch.
 call :msg sh_service_start
 echo [INFO] !M!
 call :svc_exists

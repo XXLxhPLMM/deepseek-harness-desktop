@@ -546,9 +546,9 @@ rem ---- configure PATH (user + current session) ----
 :configure_env
 call :msg env_writing
 echo [INFO] !M!
-rem 用 reg 直接读写 Windows 用户 PATH (HKCU\Environment) 而不是 setx:
-rem setx 有 1024 字符上限, 真实机器的 PATH 很容易超长导致静默失败(环境变量没写进去)。
-rem 纯 cmd 实现, 不依赖 PowerShell (用户机器可能禁用/无法执行 ps1)。
+rem Write the Windows user PATH (HKCU\Environment) via reg instead of setx:
+rem setx has a 1024-char limit and silently fails on real-world long PATHs,
+rem leaving the env var unwritten. Pure cmd, no PowerShell dependency.
 set "REG_PATH_FILE=%TEMP%\sn_path.txt"
 reg query "HKCU\Environment" /v Path > "%REG_PATH_FILE%" 2>nul
 set "CURTYPE="
@@ -560,8 +560,8 @@ if exist "%REG_PATH_FILE%" (
     )
 )
 del /f /q "%REG_PATH_FILE%" >nul 2>nul
-rem reg query 的 REG_SZ/REG_EXPAND_SZ 值在显示时会包上一层双引号, 需去掉
-rem (PATH 条目本身从不含双引号, 整串删除是安全的)
+rem reg query wraps the REG_SZ/REG_EXPAND_SZ value in double quotes for display;
+rem strip them (PATH entries never contain double quotes, deleting is safe).
 if defined CURPATH set "CURPATH=!CURPATH:"=!"
 if not defined CURTYPE set "CURTYPE=REG_EXPAND_SZ"
 if defined CURPATH (
