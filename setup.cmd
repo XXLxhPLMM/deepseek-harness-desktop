@@ -584,6 +584,7 @@ if defined CURPATH (
         ) else (
             call :msg winpath_updated "%INSTALL_DIR%"
             echo [OK]    !M!
+            set "BCAST=1"
         )
     )
 ) else (
@@ -594,11 +595,27 @@ if defined CURPATH (
     ) else (
         call :msg winpath_updated "%INSTALL_DIR%"
         echo [OK]    !M!
+        set "BCAST=1"
     )
 )
 set "PATH=%INSTALL_DIR%;%PATH%"
+rem Notify running processes (Explorer) so newly opened terminals pick up the
+rem updated user PATH without waiting for the next sign-in.
+if defined BCAST call :broadcast_env
 call :msg env_session_ok "%INSTALL_DIR%;%PATH%"
 echo [OK]    !M!
+exit /b 0
+
+rem ---- broadcast WM_SETTINGCHANGE("Environment") after the user PATH change ----
+rem reg.exe writes HKCU\Environment but never notifies running processes, so
+rem Explorer keeps the old environment and every newly opened terminal (a child
+rem of Explorer) inherits the stale PATH until the next sign-in - exactly the
+rem "works only in the current session" symptom. PowerShell's
+rem SetEnvironmentVariable broadcasts automatically; replicate that here.
+rem Best effort only: stay silent when powershell is unavailable, the PATH
+rem change then simply applies at the next logon.
+:broadcast_env
+powershell -NoProfile -Command "Add-Type -MemberDefinition '[DllImport(\"user32.dll\", SetLastError=true, CharSet=CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);' -Name NativeMethods -Namespace Win32; $r=[UIntPtr]::Zero; [Win32.NativeMethods]::SendMessageTimeout([IntPtr]0xffff, 0x1a, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$r) | Out-Null" >nul 2>nul
 exit /b 0
 
 rem ---- debug mode: strip nvm/node entries from current PATH ----
