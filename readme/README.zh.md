@@ -1,12 +1,16 @@
 <p align="center">
-  <a href="readme/README.zh.md">简体中文</a> |
-  <a href="readme/README.zh-TW.md">繁體中文</a> |
-  <a href="readme/README.en.md">English</a> |
-  <a href="readme/README.ja.md">日本語</a> |
-  <a href="readme/README.ko.md">한국어</a> |
-  <a href="readme/README.fr.md">Français</a> |
-  <a href="readme/README.de.md">Deutsch</a> |
-  <a href="readme/README.es.md">Español</a>
+  <a href="README.zh.md">简体中文</a> |
+  <a href="README.zh-TW.md">繁體中文</a> |
+  <a href="README.en.md">English</a> |
+  <a href="README.ja.md">日本語</a> |
+  <a href="README.ko.md">한국어</a> |
+  <a href="README.fr.md">Français</a> |
+  <a href="README.de.md">Deutsch</a> |
+  <a href="README.es.md">Español</a>
+</p>
+
+<p align="center">
+  <img src="../img/use.png" alt="harness-start 界面截图" />
 </p>
 
 # harness-start
