@@ -168,12 +168,17 @@ function Test-PortUp {
     return $false
 }
 
-# ---------- 启动 dsh 服务 (已注册的计划任务; 未注册则等待超时提示) ----------
+# ---------- 启动 dsh 服务 (已注册则 start; 未注册则 install 注册并启动) ----------
 function Start-DshService {
     Write-Info (msg sh_service_start)
     $svcScript = Join-Path $Script:ScriptDir "server\server-service.ps1"
     if (Test-Path $svcScript) {
-        & $svcScript start 2>$null | Out-Null
+        $installed = [bool](Get-ScheduledTask -TaskName $Script:SvcName -ErrorAction SilentlyContinue)
+        if ($installed) {
+            & $svcScript start 2>$null | Out-Null
+        } else {
+            & $svcScript install 2>$null | Out-Null
+        }
     }
     Write-Info (msg sh_service_wait)
     for ($i = 0; $i -lt 30; $i++) {

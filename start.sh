@@ -185,17 +185,29 @@ service_running() {
     return 1
 }
 
-# ---------- 启动 dsh 服务 (已注册的服务; 未注册则等待超时提示) ----------
+# ---------- 启动 dsh 服务 (已注册则 start; 未注册则 install 注册并启动) ----------
 start_service() {
     info "$(msg sh_service_start)"
     local svc_script="$SCRIPT_DIR/server/server-service.sh"
     local os
     os="$(uname -s)"
     if is_mingw; then
-        # Windows git-bash: 用计划任务直接启动 (MSYS_NO_PATHCONV 防止 /run 被转成路径)
-        MSYS_NO_PATHCONV=1 schtasks /run /tn "$SVC_NAME" >/dev/null 2>&1 || true
+        # Windows git-bash: 任务已注册则直接 /run, 否则走 install (注册并启动)。
+        # MSYS_NO_PATHCONV 防止 /run 被转成路径。
+        if MSYS_NO_PATHCONV=1 schtasks /query /tn "$SVC_NAME" >/dev/null 2>&1; then
+            MSYS_NO_PATHCONV=1 schtasks /run /tn "$SVC_NAME" >/dev/null 2>&1 || true
+        else
+            MSYS_NO_PATHCONV=1 cmd //c "call \"$SCRIPT_DIR/server/server-service.cmd\" install /nopause" >/dev/null 2>&1 || true
+        fi
     elif [[ -f "$svc_script" && ( "$os" == Linux || "$os" == Darwin ) ]]; then
-        bash "$svc_script" start >/dev/null 2>&1 || true
+        local installed=0
+        if [[ "$os" == Linux && -f /etc/systemd/system/$SVC_NAME.service ]]; then installed=1; fi
+        if [[ "$os" == Darwin && -f "/Library/LaunchDaemons/$MACOS_LABEL.plist" ]]; then installed=1; fi
+        if [[ "$installed" -eq 1 ]]; then
+            bash "$svc_script" start >/dev/null 2>&1 || true
+        else
+            bash "$svc_script" install >/dev/null 2>&1 || true
+        fi
     fi
     info "$(msg sh_service_wait)"
     local i

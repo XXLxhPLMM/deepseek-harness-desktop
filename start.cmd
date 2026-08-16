@@ -212,14 +212,25 @@ netstat -ano 2>nul | findstr /C:":%PORT% " | findstr /C:"LISTENING" >nul
 if errorlevel 1 exit /b 1
 exit /b 0
 
-rem ---- start service (scheduled task), poll port; sets STARTED=1/0 ----
+rem ---- task registered? errorlevel 0=yes, 1=no ----
+:svc_exists
+schtasks /query /tn "%SVC_NAME%" >nul 2>nul
+if not errorlevel 1 exit /b 0
+exit /b 1
+
+rem ---- start service (registered -> start; not registered -> install & start), poll port ----
 :start_service
 set "STARTED=0"
 call :msg sh_service_start
 echo [INFO] !M!
-rem try the registered scheduled task first (avoid call inside a paren block:
-rem cmd's block/goto context gets corrupted by the called script's labels)
-if exist "%SCRIPT_DIR%server\server-service.cmd" goto :svc_start
+rem 任务已注册则 start, 未注册则 install (注册并启动)。
+rem 避免 call 放在括号块内 (cmd 的块/goto 上下文会被被调脚本的 label 破坏)。
+call :svc_exists
+if not errorlevel 1 goto :svc_start
+if exist "%SCRIPT_DIR%server\server-service.cmd" goto :svc_install
+goto :svc_start_done
+:svc_install
+call "%SCRIPT_DIR%server\server-service.cmd" install /nopause >nul 2>nul
 goto :svc_start_done
 :svc_start
 call "%SCRIPT_DIR%server\server-service.cmd" start /nopause >nul 2>nul
