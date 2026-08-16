@@ -546,12 +546,28 @@ rem ---- configure PATH (user + current session) ----
 :configure_env
 call :msg env_writing
 echo [INFO] !M!
-set "CURRENT_PATH=%PATH%"
-echo %CURRENT_PATH% | findstr /I /C:"%INSTALL_DIR%" >nul
-if errorlevel 1 (
-    where setx >nul 2>nul
-    if not errorlevel 1 (
-        setx PATH "%INSTALL_DIR%;%PATH%" >nul 2>nul
+rem 用 reg 直接读写 Windows 用户 PATH (HKCU\Environment) 而不是 setx:
+rem setx 有 1024 字符上限, 真实机器的 PATH 很容易超长导致静默失败(环境变量没写进去)。
+rem 纯 cmd 实现, 不依赖 PowerShell (用户机器可能禁用/无法执行 ps1)。
+set "REG_PATH_FILE=%TEMP%\sn_path.txt"
+reg query "HKCU\Environment" /v Path > "%REG_PATH_FILE%" 2>nul
+set "CURTYPE="
+set "CURPATH="
+if exist "%REG_PATH_FILE%" (
+    for /f "usebackq skip=2 tokens=1,2,*" %%a in ("%REG_PATH_FILE%") do (
+        set "CURTYPE=%%b"
+        set "CURPATH=%%c"
+    )
+)
+del /f /q "%REG_PATH_FILE%" >nul 2>nul
+rem reg query 的 REG_SZ/REG_EXPAND_SZ 值在显示时会包上一层双引号, 需去掉
+rem (PATH 条目本身从不含双引号, 整串删除是安全的)
+if defined CURPATH set "CURPATH=!CURPATH:"=!"
+if not defined CURTYPE set "CURTYPE=REG_EXPAND_SZ"
+if defined CURPATH (
+    echo !CURPATH! | findstr /I /C:"%INSTALL_DIR%" >nul
+    if errorlevel 1 (
+        reg add "HKCU\Environment" /v Path /t !CURTYPE! /d "%INSTALL_DIR%;!CURPATH!" /f >nul 2>nul
         if errorlevel 1 (
             call :msg winpath_fail "%INSTALL_DIR%"
             echo [WARN] !M!
@@ -560,12 +576,18 @@ if errorlevel 1 (
             echo [OK]    !M!
         )
     ) else (
-        call :msg winpath_fail "%INSTALL_DIR%"
-        echo [WARN] !M!
+        call :msg winpath_already "%INSTALL_DIR%"
+        echo [INFO] !M!
     )
 ) else (
-    call :msg winpath_already "%INSTALL_DIR%"
-    echo [INFO] !M!
+    reg add "HKCU\Environment" /v Path /t !CURTYPE! /d "%INSTALL_DIR%" /f >nul 2>nul
+    if errorlevel 1 (
+        call :msg winpath_fail "%INSTALL_DIR%"
+        echo [WARN] !M!
+    ) else (
+        call :msg winpath_updated "%INSTALL_DIR%"
+        echo [OK]    !M!
+    )
 )
 set "PATH=%INSTALL_DIR%;%PATH%"
 call :msg env_session_ok "%INSTALL_DIR%;%PATH%"

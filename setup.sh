@@ -476,8 +476,11 @@ configure_env() {
         local winpath ps_script
         winpath="$(cygpath -w "$INSTALL_DIR")"
         ps_script="\$p=[Environment]::GetEnvironmentVariable('Path','User'); if(\$p -and (\$p.Split(';') -contains '$winpath')){ exit 2 } elseif(\$p){ [Environment]::SetEnvironmentVariable('Path', '$winpath;'+\$p, 'User') } else { [Environment]::SetEnvironmentVariable('Path', '$winpath', 'User') }"
-        powershell -NoProfile -Command "$ps_script"
-        case $? in
+        # 用 || 捕获退出码: 否则 set -e 会把 powershell 的非零返回 (如 exit 2 = 已存在)
+        # 当成致命错误, 在 case 处理前就中止脚本, 导致 setup 报失败。
+        local ps_rc=0
+        powershell -NoProfile -Command "$ps_script" || ps_rc=$?
+        case $ps_rc in
             0) ok "$(msg winpath_updated "$winpath")" ;;       # 提示: 已更新 Windows 用户 PATH (添加 <path>)
             2) info "$(msg winpath_already "$winpath")" ;;     # 提示: Windows 用户 PATH 已包含 <path>，跳过
             *) warn "$(msg winpath_fail "$winpath")" ;;        # 提示: 更新 Windows 用户 PATH 失败，请手动添加 <path>
