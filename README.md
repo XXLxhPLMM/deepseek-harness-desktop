@@ -1,3 +1,11 @@
+<h1 align="center">harness-start</h1>
+
+<p align="center">
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-green" />
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue" />
+  <img alt="Node" src="https://img.shields.io/badge/node-%3E%3D%2022-339933" />
+</p>
+
 <p align="center">
   <a href="readme/README.zh.md">简体中文</a> |
   <a href="readme/README.zh-TW.md">繁體中文</a> |
@@ -12,8 +20,6 @@
 <p align="center">
   <img src="img/use.png" alt="harness-start 界面截图" />
 </p>
-
-# harness-start
 
 基于 **webview** 的 **DeepSeek Harness 桌面端启动器**，跨平台（Windows / macOS / Linux）。
 
