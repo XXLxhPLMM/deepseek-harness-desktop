@@ -167,10 +167,90 @@ if defined CUR_VER (
     echo [INFO] !M!
 )
 
+rem ============================================================================
+rem  Subroutines (called from main flow before :finish)
+rem ============================================================================
+
+rem ---- configure PATH (user + current session) ----
+:configure_env
+if "%DRY_RUN%"=="1" (
+    call :msg dryrun_skip
+    echo [INFO] !M!
+    exit /b 0
+)
+call :msg env_writing
+echo [INFO] !M!
+rem Write the Windows user PATH (HKCU\Environment) via reg instead of setx:
+rem setx has a 1024-char limit and silently fails on real-world long PATHs,
+rem leaving the env var unwritten. Pure cmd, no PowerShell dependency.
+set "REG_PATH_FILE=%TEMP%\sn_path.txt"
+reg query "HKCU\Environment" /v Path > "%REG_PATH_FILE%" 2>nul
+set "CURTYPE="
+set "CURPATH="
+if exist "%REG_PATH_FILE%" (
+    for /f "usebackq skip=2 tokens=1,2,*" %%a in ("%REG_PATH_FILE%") do (
+        set "CURTYPE=%%b"
+        set "CURPATH=%%c"
+    )
+)
+del /f /q "%REG_PATH_FILE%" >nul 2>nul
+rem reg query wraps the REG_SZ/REG_EXPAND_SZ value in double quotes for display;
+rem strip them (PATH entries never contain double quotes, deleting is safe).
+if defined CURPATH set "CURPATH=!CURPATH:"=!"
+if not defined CURTYPE set "CURTYPE=REG_EXPAND_SZ"
+if defined CURPATH (
+    rem Substring check via variable substitution (no echo/findstr pipe, so it
+    rem survives very long PATHs that would overflow echo). INSTALL_DIR contains
+    rem no % or !, so substitution is safe.
+    if not "!CURPATH:%INSTALL_DIR%=!"=="!CURPATH!" (
+        call :msg winpath_already "%INSTALL_DIR%"
+        echo [INFO] !M!
+    ) else (
+        reg add "HKCU\Environment" /v Path /t !CURTYPE! /d "%INSTALL_DIR%;!CURPATH!" /f >nul 2>nul
+        if errorlevel 1 (
+            call :msg winpath_fail "%INSTALL_DIR%"
+            echo [WARN] !M!
+        ) else (
+            call :msg winpath_updated "%INSTALL_DIR%"
+            echo [OK]    !M!
+            set "BCAST=1"
+        )
+    )
+) else (
+    reg add "HKCU\Environment" /v Path /t !CURTYPE! /d "%INSTALL_DIR%" /f >nul 2>nul
+    if errorlevel 1 (
+        call :msg winpath_fail "%INSTALL_DIR%"
+        echo [WARN] !M!
+    ) else (
+        call :msg winpath_updated "%INSTALL_DIR%"
+        echo [OK]    !M!
+        set "BCAST=1"
+    )
+)
+set "PATH=%INSTALL_DIR%;%PATH%"
+rem Notify running processes (Explorer) so newly opened terminals pick up the
+rem updated user PATH without waiting for the next sign-in.
+if defined BCAST call :broadcast_env
+call :msg env_session_ok "%INSTALL_DIR%;%PATH%"
+echo [OK]    !M!
+exit /b 0
+
+rem ---- broadcast WM_SETTINGCHANGE("Environment") after the user PATH change ----
+rem reg.exe writes HKCU\Environment but never notifies running processes, so
+rem Explorer keeps the old environment and every newly opened terminal (a child
+rem of Explorer) inherits the stale PATH until the next sign-in - exactly the
+rem "works only in the current session" symptom. PowerShell's
+rem SetEnvironmentVariable broadcasts automatically; replicate that here.
+rem Best effort only: stay silent when powershell is unavailable, the PATH
+rem change then simply applies at the next logon.
+:broadcast_env
+powershell -NoProfile -Command "Add-Type -MemberDefinition '[DllImport(\"user32.dll\", SetLastError=true, CharSet=CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);' -Name NativeMethods -Namespace Win32; $r=[UIntPtr]::Zero; [Win32.NativeMethods]::SendMessageTimeout([IntPtr]0xffff, 0x1a, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$r) | Out-Null" >nul 2>nul
+exit /b 0
+
 goto :finish
 
 rem ============================================================================
-rem  Subroutines
+rem  Subroutines (only called from other subroutines)
 rem ============================================================================
 
 rem ---- message lookup: call :msg <key> <arg1> <arg2>; result in M ----
@@ -540,82 +620,6 @@ if errorlevel 1 (
     call :msg nrm_done
     echo [OK]    !M!
 )
-exit /b 0
-
-rem ---- configure PATH (user + current session) ----
-:configure_env
-if "%DRY_RUN%"=="1" (
-    call :msg dryrun_skip
-    echo [INFO] !M!
-    exit /b 0
-)
-call :msg env_writing
-echo [INFO] !M!
-rem Write the Windows user PATH (HKCU\Environment) via reg instead of setx:
-rem setx has a 1024-char limit and silently fails on real-world long PATHs,
-rem leaving the env var unwritten. Pure cmd, no PowerShell dependency.
-set "REG_PATH_FILE=%TEMP%\sn_path.txt"
-reg query "HKCU\Environment" /v Path > "%REG_PATH_FILE%" 2>nul
-set "CURTYPE="
-set "CURPATH="
-if exist "%REG_PATH_FILE%" (
-    for /f "usebackq skip=2 tokens=1,2,*" %%a in ("%REG_PATH_FILE%") do (
-        set "CURTYPE=%%b"
-        set "CURPATH=%%c"
-    )
-)
-del /f /q "%REG_PATH_FILE%" >nul 2>nul
-rem reg query wraps the REG_SZ/REG_EXPAND_SZ value in double quotes for display;
-rem strip them (PATH entries never contain double quotes, deleting is safe).
-if defined CURPATH set "CURPATH=!CURPATH:"=!"
-if not defined CURTYPE set "CURTYPE=REG_EXPAND_SZ"
-if defined CURPATH (
-    rem Substring check via variable substitution (no echo/findstr pipe, so it
-    rem survives very long PATHs that would overflow echo). INSTALL_DIR contains
-    rem no % or !, so substitution is safe.
-    if not "!CURPATH:%INSTALL_DIR%=!"=="!CURPATH!" (
-        call :msg winpath_already "%INSTALL_DIR%"
-        echo [INFO] !M!
-    ) else (
-        reg add "HKCU\Environment" /v Path /t !CURTYPE! /d "%INSTALL_DIR%;!CURPATH!" /f >nul 2>nul
-        if errorlevel 1 (
-            call :msg winpath_fail "%INSTALL_DIR%"
-            echo [WARN] !M!
-        ) else (
-            call :msg winpath_updated "%INSTALL_DIR%"
-            echo [OK]    !M!
-            set "BCAST=1"
-        )
-    )
-) else (
-    reg add "HKCU\Environment" /v Path /t !CURTYPE! /d "%INSTALL_DIR%" /f >nul 2>nul
-    if errorlevel 1 (
-        call :msg winpath_fail "%INSTALL_DIR%"
-        echo [WARN] !M!
-    ) else (
-        call :msg winpath_updated "%INSTALL_DIR%"
-        echo [OK]    !M!
-        set "BCAST=1"
-    )
-)
-set "PATH=%INSTALL_DIR%;%PATH%"
-rem Notify running processes (Explorer) so newly opened terminals pick up the
-rem updated user PATH without waiting for the next sign-in.
-if defined BCAST call :broadcast_env
-call :msg env_session_ok "%INSTALL_DIR%;%PATH%"
-echo [OK]    !M!
-exit /b 0
-
-rem ---- broadcast WM_SETTINGCHANGE("Environment") after the user PATH change ----
-rem reg.exe writes HKCU\Environment but never notifies running processes, so
-rem Explorer keeps the old environment and every newly opened terminal (a child
-rem of Explorer) inherits the stale PATH until the next sign-in - exactly the
-rem "works only in the current session" symptom. PowerShell's
-rem SetEnvironmentVariable broadcasts automatically; replicate that here.
-rem Best effort only: stay silent when powershell is unavailable, the PATH
-rem change then simply applies at the next logon.
-:broadcast_env
-powershell -NoProfile -Command "Add-Type -MemberDefinition '[DllImport(\"user32.dll\", SetLastError=true, CharSet=CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);' -Name NativeMethods -Namespace Win32; $r=[UIntPtr]::Zero; [Win32.NativeMethods]::SendMessageTimeout([IntPtr]0xffff, 0x1a, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$r) | Out-Null" >nul 2>nul
 exit /b 0
 
 rem ---- debug mode: strip nvm/node entries from current PATH ----
