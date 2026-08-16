@@ -308,7 +308,10 @@ function Install-Dsh {
     # 提示: 未检测到 dsh，开始全局安装 @deepseek-ai/dsh ...
     Write-Info (msg dsh_not_found)
     Write-Info (msg dsh_install)
-    & npm install -g $Script:DshPkg
+    # 用 npm.cmd 而非 npm: PowerShell 的 npm.ps1 shim 会把原始命令行经
+    # Invoke-Expression 在自己的作用域重求值, 导致本脚本的 $Script:DshPkg
+    # 在 shim 作用域找不到而报 VariableIsUndefined。npm.cmd 用 %* 传已展开参数, 无此问题。
+    & npm.cmd install -g $Script:DshPkg
     if ($LASTEXITCODE -ne 0) {
         Write-Fail (msg dsh_fail $Script:DshPkg)
         return $false
@@ -374,7 +377,7 @@ function Ensure-NpmMirror {
         return
     }
     Write-Info (msg nrm_install)
-    & npm install -g $Script:NrmPkg 2>$null
+    & npm.cmd install -g $Script:NrmPkg 2>$null
     if ($LASTEXITCODE -ne 0) {
         Write-Warn (msg nrm_fail $Script:NrmPkg)
     } else {
