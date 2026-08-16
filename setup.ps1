@@ -158,8 +158,7 @@ function Test-Nvm {
     if ($ArgDebug) { return $false }
     $nvmCmd = Get-Command nvm -ErrorAction SilentlyContinue
     if ($nvmCmd) { return $true }
-    if ($env:NVM_HOME) { return $true }
-    if (Test-Path (Join-Path $env:NVM_HOME "nvm.exe")) { return $true }
+    if ($env:NVM_HOME -and (Test-Path (Join-Path $env:NVM_HOME "nvm.exe"))) { return $true }
     return $false
 }
 
