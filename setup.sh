@@ -107,6 +107,8 @@ load_lang() {
     if [[ -f "$file" ]]; then
         local key val
         while IFS='=' read -r key val; do
+            key=${key%$'\r'}
+            val=${val%$'\r'}
             [[ -z "$key" || "$key" == \#* ]] && continue
             printf -v "MSG_$key" '%s' "$val"
         done < "$file"
@@ -116,6 +118,8 @@ load_lang() {
         file="$SCRIPT_DIR/locales/zh.lang"
         local key2 val2
         while IFS='=' read -r key2 val2; do
+            key2=${key2%$'\r'}
+            val2=${val2%$'\r'}
             [[ -z "$key2" || "$key2" == \#* ]] && continue
             printf -v "MSG_$key2" '%s' "$val2"
         done < "$file"
@@ -428,6 +432,12 @@ configure_env() {
     local export_line
     export_line="export PATH=\"$INSTALL_DIR/bin:\$PATH\""
 
+    # --dry-run: 只检测不修改
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        info "$(msg dryrun_skip)"
+        return 0
+    fi
+
     # Windows git-bash: 二进制在根目录 (node.exe, npm.cmd)
     if is_mingw; then
         export_line="export PATH=\"$INSTALL_DIR:\$PATH\""
@@ -588,7 +598,7 @@ main() {
         install_dsh || return 1
     fi
 
-    # ---- 环境变量 (仅当实际安装了 node 时才需要配置) ----
+    # ---- 环境变量 (仅当我们自己安装了 node; 系统已有 node 则不碰) ----
     if [[ "$NODE_INSTALLED" -eq 1 ]]; then
         if [[ "$DO_ENV" -eq 1 && "$DEBUG_MODE" -ne 1 ]]; then
             configure_env

@@ -387,6 +387,11 @@ function Ensure-NpmMirror {
 
 # ---------- 配置环境变量 (Windows 用户 PATH) ----------
 function Set-NodeEnv {
+    if ($ArgDryRun) {
+        # 提示: --dry-run 模式，跳过安装
+        Write-Info (msg dryrun_skip)
+        return
+    }
     # 提示: 写入环境变量配置...
     Write-Info (msg env_writing)
 
@@ -507,7 +512,7 @@ function Main {
         }
     }
 
-    # ---- 环境变量 (仅当实际安装了 node 时才需要配置) ----
+    # ---- 环境变量 (仅当我们自己安装了 node; 系统已有 node 则不碰) ----
     if ($nodeInstalled) {
         if ($ArgNoEnv -or $ArgDebug) {
             if ($ArgDebug) {

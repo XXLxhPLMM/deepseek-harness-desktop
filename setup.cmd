@@ -136,7 +136,7 @@ if errorlevel 1 (
     goto :finish
 )
 set "EXIT_CODE=0"
-rem ---- environment (only when node was installed) ----
+rem ---- environment (only when we installed node ourselves; system node untouched) ----
 if "%NODE_INSTALLED%"=="1" (
     if "%DEBUG_MODE%"=="1" (
         call :msg debug_session_only
@@ -544,6 +544,11 @@ exit /b 0
 
 rem ---- configure PATH (user + current session) ----
 :configure_env
+if "%DRY_RUN%"=="1" (
+    call :msg dryrun_skip
+    echo [INFO] !M!
+    exit /b 0
+)
 call :msg env_writing
 echo [INFO] !M!
 rem Write the Windows user PATH (HKCU\Environment) via reg instead of setx:
@@ -565,8 +570,13 @@ rem strip them (PATH entries never contain double quotes, deleting is safe).
 if defined CURPATH set "CURPATH=!CURPATH:"=!"
 if not defined CURTYPE set "CURTYPE=REG_EXPAND_SZ"
 if defined CURPATH (
-    echo !CURPATH! | findstr /I /C:"%INSTALL_DIR%" >nul
-    if errorlevel 1 (
+    rem Substring check via variable substitution (no echo/findstr pipe, so it
+    rem survives very long PATHs that would overflow echo). INSTALL_DIR contains
+    rem no % or !, so substitution is safe.
+    if not "!CURPATH:%INSTALL_DIR%=!"=="!CURPATH!" (
+        call :msg winpath_already "%INSTALL_DIR%"
+        echo [INFO] !M!
+    ) else (
         reg add "HKCU\Environment" /v Path /t !CURTYPE! /d "%INSTALL_DIR%;!CURPATH!" /f >nul 2>nul
         if errorlevel 1 (
             call :msg winpath_fail "%INSTALL_DIR%"
@@ -575,9 +585,6 @@ if defined CURPATH (
             call :msg winpath_updated "%INSTALL_DIR%"
             echo [OK]    !M!
         )
-    ) else (
-        call :msg winpath_already "%INSTALL_DIR%"
-        echo [INFO] !M!
     )
 ) else (
     reg add "HKCU\Environment" /v Path /t !CURTYPE! /d "%INSTALL_DIR%" /f >nul 2>nul
