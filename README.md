@@ -9,6 +9,10 @@
   <a href="readme/README.es.md">Español</a>
 </p>
 
+<p align="center">
+  <img src="img/use.png" alt="harness-start 界面截图" />
+</p>
+
 # harness-start
 
 基于 **webview** 的 **DeepSeek Harness 桌面端启动器**，跨平台（Windows / macOS / Linux）。
