@@ -116,10 +116,37 @@ rem ---- 3) detect whether the dsh service is running ----
 call :svc_running
 if "%RUNNING%"=="1" goto :service_running
 
-rem ---- start the service (scheduled task) ----
-call :start_service
-if "%STARTED%"=="1" goto :service_ready
+rem ---- start the service (registered -> start; not registered -> install & start) ----
+rem 不用 call 进入子程序再 goto 到其它 label (会破坏 cmd 的 call 返回栈,
+rem 产生 "/goto 不是内部或外部命令"); 也不在括号块内调 server-service.cmd
+rem (其内部用 goto, 会破坏块/goto 上下文)。全部在主流程平铺 + goto 分发。
+call :msg sh_service_start
+echo [INFO] !M!
+call :svc_exists
+if not errorlevel 1 goto :svc_start
+goto :svc_install
 
+:svc_install
+call "%SCRIPT_DIR%server\server-service.cmd" install /nopause >nul 2>nul
+goto :svc_wait
+
+:svc_start
+call "%SCRIPT_DIR%server\server-service.cmd" start /nopause >nul 2>nul
+goto :svc_wait
+
+:svc_wait
+call :msg sh_service_wait
+echo [INFO] !M!
+set "WAITED=0"
+:wait_loop
+call :check_port
+if not errorlevel 1 goto :service_ready
+set /a WAITED+=1
+if %WAITED% GEQ 30 goto :service_fail
+ping -n 2 127.0.0.1 >nul
+goto :wait_loop
+
+:service_fail
 call :msg sh_service_fail "%URL%"
 echo [WARN] !M!
 goto :finish
@@ -217,37 +244,6 @@ rem ---- task registered? errorlevel 0=yes, 1=no ----
 schtasks /query /tn "%SVC_NAME%" >nul 2>nul
 if not errorlevel 1 exit /b 0
 exit /b 1
-
-rem ---- start service (registered -> start; not registered -> install & start), poll port ----
-:start_service
-set "STARTED=0"
-call :msg sh_service_start
-echo [INFO] !M!
-rem 任务已注册则 start, 未注册则 install (注册并启动)。
-rem 避免 call 放在括号块内 (cmd 的块/goto 上下文会被被调脚本的 label 破坏)。
-call :svc_exists
-if not errorlevel 1 goto :svc_start
-if exist "%SCRIPT_DIR%server\server-service.cmd" goto :svc_install
-goto :svc_start_done
-:svc_install
-call "%SCRIPT_DIR%server\server-service.cmd" install /nopause >nul 2>nul
-goto :svc_start_done
-:svc_start
-call "%SCRIPT_DIR%server\server-service.cmd" start /nopause >nul 2>nul
-:svc_start_done
-call :msg sh_service_wait
-echo [INFO] !M!
-set "WAITED=0"
-:wait_loop
-call :check_port
-if not errorlevel 1 (
-    set "STARTED=1"
-    exit /b 0
-)
-set /a WAITED+=1
-if %WAITED% GEQ 30 exit /b 1
-ping -n 2 127.0.0.1 >nul
-goto :wait_loop
 
 rem ---- open URL in webview/browser app mode (Edge/Chrome), fallback default ----
 :open_browser_internal
