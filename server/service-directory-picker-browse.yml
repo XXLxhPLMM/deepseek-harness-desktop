@@ -1,0 +1,21 @@
+# Overlay for the SYSTEM-run dsh service: pin the workspace directory picker
+# to the browse backend (in-app folder browser over the web API).
+#
+# Why: the Windows service runs as SYSTEM in session 0 (non-interactive window
+# station). dsh's directory-picker-auto resolves the "native" backend for
+# win32 + loopback bind, which opens the OS folder dialog (IFileOpenDialog) in
+# the server's own session -- invisible to the logged-on user, so workspace
+# selection / open-folder cannot be triggered. The browse backend renders a
+# directory browser inside the web UI and works from any session.
+#
+# Pass this file to the service invocation with `dsh web --patch <this file>`.
+# Manual desktop launches (dsh web) keep the native backend and are unaffected.
+- id: directory-picker
+  disabled: true
+
+- insert:
+    - id: directory-picker-browse
+      name: '@deepseek-ai/dsh-host-directory-picker-browse'
+
+    - id: ui-directory-picker-browse
+      name: '@deepseek-ai/dsh-client-ui-directory-picker-browse'

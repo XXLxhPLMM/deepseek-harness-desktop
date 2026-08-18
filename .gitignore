@@ -10,6 +10,11 @@ node_modules/
 *.tar.gz
 *.tgz
 
+# 服务安装时生成的 dsh web 运行包装脚本 (含本机绝对路径, 每次 install 重建)
+server/run-dsh-web.cmd
+server/run-dsh-web.vbs
+server/run-dsh-web.ps1
+
 # 操作系统 / 编辑器
 .DS_Store
 Thumbs.db

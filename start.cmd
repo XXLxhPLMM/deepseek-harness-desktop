@@ -196,7 +196,6 @@ set "M=!M:{1}=%~2!"
 set "M=!M:{2}=%~3!"
 :msg_ret
 exit /b 0
-exit /b 0
 
 rem ---- dsh ready? errorlevel 0=yes (skip setup), 1=no (need setup) ----
 rem Normal mode checks PATH; debug mode only accepts the script-dir node global.

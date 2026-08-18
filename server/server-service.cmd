@@ -3,8 +3,14 @@ rem ============================================================================
 rem  server-service.cmd  -  Windows cmd native service manager for dsh web
 rem
 rem  Installs/manages the `dsh web` DeepSeek Harness service on Windows, using
-rem  a scheduled task (`schtasks /sc onstart`) with node.exe run directly:
-rem      <node.exe> <dsh cli.js> web --port <port> --host <host>
+rem  a scheduled task (`schtasks /sc onstart`). The task runs a short generated
+rem  wrapper (run-dsh-web.cmd); non-debug mode calls `dsh web` from PATH:
+rem      dsh web [--patch <overlay>] --port <port> --host <host>
+rem  Default (no --service) registers an interactive task (/it) in the logged-on
+rem  user's session, launched hidden via wscript (no cmd window), with the native
+rem  folder dialog. When VBScript is unavailable (on-demand feature since Windows
+rem  11 24H2) it falls back to a hidden PowerShell launcher. --service registers
+rem  a SYSTEM task that auto-starts before login and pins the in-app browse picker.
 rem
 rem  Task name is fixed to dsh-web (auto start at boot).
 rem
@@ -22,6 +28,7 @@ rem    server-service.cmd stop          stop the service
 rem    server-service.cmd --port 8080 install
 rem    server-service.cmd --host 0.0.0.0 install
 rem    server-service.cmd --debug install   use nodejs/dsh under script dir
+rem    server-service.cmd --service install run as SYSTEM (auto-start pre-login)
 rem    server-service.cmd --help
 rem    server-service.cmd /nopause      exit without pausing (for double-click)
 rem
@@ -52,6 +59,7 @@ set "PORT=%DEFAULT_PORT%"
 if defined DSH_PORT set "PORT=%DSH_PORT%"
 set "HOST=127.0.0.1"
 set "DEBUG_MODE=0"
+set "SERVICE_MODE=0"
 set "NO_PAUSE=0"
 set "ACTION="
 set "EXIT_CODE=0"
@@ -79,6 +87,9 @@ if /i "%~1"=="/host"      goto :set_host
 if /i "%~1"=="-host"      goto :set_host
 if /i "%~1"=="--debug"    set "DEBUG_MODE=1"  & shift /1 & goto :parse
 if /i "%~1"=="/debug"     set "DEBUG_MODE=1"  & shift /1 & goto :parse
+if /i "%~1"=="--service"  set "SERVICE_MODE=1"  & shift /1 & goto :parse
+if /i "%~1"=="/service"   set "SERVICE_MODE=1"  & shift /1 & goto :parse
+if /i "%~1"=="-service"   set "SERVICE_MODE=1"  & shift /1 & goto :parse
 if /i "%~1"=="--help"     goto :show_help
 if /i "%~1"=="/help"      goto :show_help
 if /i "%~1"=="-h"         goto :show_help
@@ -131,7 +142,6 @@ goto :finish
 :do_install
 call :resolve_runtime
 if errorlevel 1 goto :finish
-set "NEED_START=0"
 call :svc_exists
 if not errorlevel 1 (
     call :msg srvc_exists "%SVC_NAME%"
@@ -139,20 +149,76 @@ if not errorlevel 1 (
 ) else (
     call :msg srvc_install "%PORT%"
     echo [INFO] !M!
-    set "BINPATH=cmd /c set \"DSH_HOME=%USERPROFILE%\.dsh\" && \"%NODE_EXE%\" \"%DSH_CLI%\" web --port %PORT% --host %HOST%"
-    schtasks /create /tn "%SVC_NAME%" /tr "!BINPATH!" /sc onstart /ru SYSTEM /rl highest /f >nul 2>nul
-    if errorlevel 1 (
-        call :msg srvc_install_fail "%SVC_NAME%"
-        echo [ERROR] !M!
-        set "EXIT_CODE=1"
-        goto :finish
+)
+rem Stop any running instance so the forced re-create below takes effect cleanly.
+schtasks /end /tn "%SVC_NAME%" >nul 2>nul
+rem Re-create with /f every time so a changed command is refreshed on re-install.
+rem Two run modes:
+rem   --service: task runs as SYSTEM in session 0, where the native OS folder
+rem     dialog (IFileOpenDialog) cannot be shown, so the browse directory
+rem     picker is pinned via --patch. USERPROFILE is baked into the wrapper.
+rem   default (interactive): task runs with /it in the logged-on user's session
+rem     and the native folder dialog just works (no --patch needed).
+rem
+rem schtasks caps the /tr value at 261 chars, so register a short run wrapper
+rem (run-dsh-web.cmd) that carries the real command. Non-debug mode calls `dsh
+rem web` from PATH (no absolute node paths); debug mode pins the script-dir
+rem nodejs. --patch is a dsh launcher flag and must come right after `web`,
+rem before the inner app flags (--port/--host).
+set "RUNNER=%SCRIPT_DIR%run-dsh-web.cmd"
+set "RUNNER_VBS=%SCRIPT_DIR%run-dsh-web.vbs"
+set "RUNNER_PS1=%SCRIPT_DIR%run-dsh-web.ps1"
+>  "%RUNNER%" echo @echo off
+>> "%RUNNER%" echo set "DSH_HOME=%USERPROFILE%\.dsh"
+>> "%RUNNER%" echo set "USERPROFILE=%USERPROFILE%"
+if "%SERVICE_MODE%"=="1" (
+    if "%DEBUG_MODE%"=="1" (
+        >> "%RUNNER%" echo "%NODE_EXE%" "%DSH_CLI%" web --patch "%SCRIPT_DIR%service-directory-picker-browse.yml" --port %PORT% --host %HOST%
+    ) else (
+        >> "%RUNNER%" echo dsh web --patch "%SCRIPT_DIR%service-directory-picker-browse.yml" --port %PORT% --host %HOST%
     )
-    set "NEED_START=1"
+) else (
+    if "%DEBUG_MODE%"=="1" (
+        >> "%RUNNER%" echo "%NODE_EXE%" "%DSH_CLI%" web --port %PORT% --host %HOST%
+    ) else (
+        >> "%RUNNER%" echo dsh web --port %PORT% --host %HOST%
+    )
+)
+rem Interactive mode: launch via a hidden wscript wrapper so no cmd window pops
+rem up in the user's session. The VBS body is written at top level because its
+rem parentheses would otherwise break a cmd if-block. The second echo line must
+rem keep the doubled quotes (VBS string escaping).
+>  "%RUNNER_VBS%" echo Set sh = CreateObject("WScript.Shell")
+>> "%RUNNER_VBS%" echo sh.Run "cmd /c ""%RUNNER%""", 0, True
+rem Fallback for machines where the VBScript feature is not installed (it is an
+rem on-demand feature since Windows 11 24H2): a hidden PowerShell launcher that
+rem Start-Processes the wrapper with -WindowStyle Hidden and waits.
+>  "%RUNNER_PS1%" echo Start-Process -FilePath "%RUNNER%" -WindowStyle Hidden -Wait
+rem Probe VBScript availability; result in VBS_OK.
+set "VBS_OK="
+>  "%TEMP%\dsh_vbs_probe.vbs" echo WScript.Echo "OK"
+for /f "usebackq delims=" %%o in (`cscript //nologo "%TEMP%\dsh_vbs_probe.vbs" 2^>nul`) do if "%%o"=="OK" set "VBS_OK=1"
+del /f /q "%TEMP%\dsh_vbs_probe.vbs" >nul 2>nul
+if "%SERVICE_MODE%"=="1" (
+    set "BINPATH=cmd /c \"\"%RUNNER%\"\""
+    schtasks /create /tn "%SVC_NAME%" /tr "!BINPATH!" /sc onstart /ru SYSTEM /rl highest /f >nul 2>nul
+) else (
+    if defined VBS_OK (
+        set "BINPATH=wscript.exe \"%RUNNER_VBS%\""
+    ) else (
+        set "BINPATH=powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"%RUNNER_PS1%\""
+    )
+    schtasks /create /tn "%SVC_NAME%" /tr "!BINPATH!" /sc onstart /ru "%USERNAME%" /it /rl highest /f >nul 2>nul
+)
+if errorlevel 1 (
+    call :msg srvc_install_fail "%SVC_NAME%"
+    echo [ERROR] !M!
+    set "EXIT_CODE=1"
+    goto :finish
 )
 call :msg srvc_installed "%SVC_NAME%"
 echo [OK]    !M!
-if "%NEED_START%"=="1" goto :do_start
-goto :finish
+goto :do_start
 
 :do_uninstall
 call :svc_exists
@@ -172,6 +238,7 @@ if errorlevel 1 (
     set "EXIT_CODE=1"
     goto :finish
 )
+call :kill_dsh_web
 call :msg srvc_uninstalled
 echo [OK]    !M!
 goto :finish
@@ -236,6 +303,7 @@ if not errorlevel 1 (
     echo [INFO] !M!
     schtasks /end /tn "%SVC_NAME%" >nul 2>nul
 )
+call :kill_dsh_web
 call :msg srvc_stopped_ok
 echo [OK]    !M!
 goto :finish
@@ -260,7 +328,7 @@ set "DSH_PKG_DIR="
 set "DSH_BIN_REL="
 if "%DEBUG_MODE%"=="1" (
     if exist "%ROOT_DIR%\nodejs\node.exe" set "NODE_EXE=%ROOT_DIR%\nodejs\node.exe"
-    if exist "%ROOT_DIR%\node_modules\@deepseek-ai\dsh\package.json" set "DSH_PKG_DIR=%ROOT_DIR%\node_modules\@deepseek-ai\dsh"
+    if exist "%ROOT_DIR%\nodejs\node_modules\@deepseek-ai\dsh\package.json" set "DSH_PKG_DIR=%ROOT_DIR%\nodejs\node_modules\@deepseek-ai\dsh"
     goto :have_dsh_dir
 )
 where node >nul 2>nul
@@ -310,6 +378,14 @@ powershell -NoProfile -Command "$t=Get-ScheduledTask -TaskName '%SVC_NAME%' -Err
 if not errorlevel 1 exit /b 0
 exit /b 1
 
+rem ---- kill leftover dsh web process tree ----
+rem schtasks /end only terminates the task's primary process (wscript.exe in
+rem interactive mode); the hidden cmd -> node chain would be orphaned and keep
+rem serving, so kill the dsh web node explicitly (the wrapper cmd then exits).
+:kill_dsh_web
+powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -like '*@deepseek-ai*' -and $_.CommandLine -like '*web --port*' } | ForEach-Object { taskkill /F /T /PID $_.ProcessId }" >nul 2>nul
+exit /b 0
+
 :show_help
 call :msg srvc_usage "%SELF%"
 echo !M!
@@ -323,6 +399,7 @@ echo   !M!
 call :msg srvc_usage_host
 echo   !M!
 call :msg srvc_usage_debug & echo !M!
+call :msg srvc_usage_service & echo !M!
 call :msg srvc_usage_help & echo !M!
 call :msg srvc_usage_nopause & echo !M!
 goto :finish

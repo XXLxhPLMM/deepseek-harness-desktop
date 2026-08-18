@@ -29,11 +29,16 @@ installed=Node.js 를 {1} 에 설치했습니다
 exe_not_found=압축 해제는 완료됐지만 실행 파일을 찾을 수 없습니다. {1} 을(를) 확인하세요
 env_writing=환경 변수 구성을 작성 중...
 env_session_ok=현재 세션에 적용됨: {1}
+env_nvm_skip=node가 nvm으로 설치되었습니다. nvm이 PATH를 관리하므로 시스템 PATH 쓰기를 건너뜁니다
+env_promoted={1} 을(를) 사용자 PATH에서 시스템 PATH로 이동했습니다
+env_promote_clean={1} 이(가) 시스템 PATH에 이미 있습니다. 사용자 PATH 중복을 정리했습니다
+env_promote_fail={1} 을(를) 시스템 PATH로 이동하지 못했습니다
 profile_written={1} 에 기록했습니다
 profile_skip={1} 은(는) 이미 구성됨. 건너뜀
-winpath_updated=Windows 사용자 PATH 업데이트됨 ({1} 추가)
-winpath_already=Windows 사용자 PATH 에 이미 {1} 이(가) 있음. 건너뜀
-winpath_fail=Windows 사용자 PATH 업데이트 실패. {1} 을(를) 수동으로 추가하세요
+winpath_updated=Windows 시스템 PATH 업데이트됨 ({1} 추가)
+winpath_already=Windows 시스템 PATH 에 이미 {1} 이(가) 있음. 건너뜀
+winpath_fail=Windows 시스템 PATH 업데이트 실패. {1} 을(를) 수동으로 추가하세요
+env_no_admin=시스템 PATH에 쓰려면 관리자 권한이 필요합니다. 관리자로 setup을 다시 실행하거나 {1}을(를) 시스템 PATH에 수동으로 추가하세요.
 debug_scan=디버그: 현재 PATH 의 nvm / node 항목 확인 중...
 removing=  제거: {1}
 removed=현재 세션 PATH 에서 nvm/node 항목을 제거했습니다
@@ -106,6 +111,7 @@ srvc_usage_status=  status         서비스 상태 확인
 srvc_usage_start=  start          서비스 시작
 srvc_usage_stop=  stop           서비스 중지
 srvc_usage_debug=  --debug        디버그: 스크립트 폴더의 nodejs/dsh 사용
+srvc_usage_service=  --service     SYSTEM으로 실행: 로그인 없이도 자동 시작 (웹 내장 탐색기 사용; 기본은 대화형 모드 네이티브 대화상자)
 srvc_usage_help=  --help         도움말 표시
 srvc_usage_nopause=  /nopause       종료 시 일시정지하지 않음 (더블클릭 실행용)
 srvc_usage_port=--port <포트>  서비스 포트 (기본: {1})
@@ -144,3 +150,12 @@ ud_fail=dsh 업데이트 실패: {1}
 ud_no_dsh=dsh를 찾을 수 없습니다. setup 또는 install-server-service를 먼저 실행하세요.
 ud_restarting=dsh-web 서비스 실행 중, 재시작 중...
 ud_restart_done=dsh-web 서비스가 재시작되었습니다
+
+# --- cmd: enable PowerShell script execution for the current user ---
+ps1_policy_set=현재 사용자에 대해 PowerShell 스크립트 실행 정책을 사용하도록 설정했습니다 (RemoteSigned)
+ps1_policy_fail=PowerShell 스크립트 실행 정책을 설정하지 못했습니다. 관리자로 실행하거나 수동으로 설정하세요
+
+# --- enable-ps.cmd standalone helper ---
+ps_title=PowerShell 스크립트 실행 사용
+ps_usage=사용법: {1} [옵션]
+ps1_policy_ok=PowerShell 스크립트 실행을 이미 사용할 수 있습니다 (현재 정책: {1})

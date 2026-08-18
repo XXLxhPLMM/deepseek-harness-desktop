@@ -478,23 +478,28 @@ configure_env() {
         fi
     done
 
-    # 3) Windows 用户 PATH (setx)，让 cmd/PowerShell 也能用
+    # 3) Windows 系统 PATH，让 cmd/PowerShell/SYSTEM 服务都能用
     #    注意: 不能用 bash 的 $PATH (MSYS 风格, 含 /e/... 与 ':' 分隔) 直接 setx,
-    #    否则会写入损坏的 Windows PATH。用 PowerShell 读写用户 PATH (正确处理 UTF-16,
-    #    避免非 ASCII 条目在 reg/setx 控制台代码页下被写坏)。
+    #    否则会写入损坏的 Windows PATH。用 PowerShell 读写系统 PATH (正确处理 UTF-16,
+    #    避免非 ASCII 条目在 reg/setx 控制台代码页下被写坏)。写系统 PATH 需要管理员权限。
     if is_mingw && command -v powershell >/dev/null 2>&1; then
         local winpath ps_script
         winpath="$(cygpath -w "$INSTALL_DIR")"
-        ps_script="\$p=[Environment]::GetEnvironmentVariable('Path','User'); if(\$p -and (\$p.Split(';') -contains '$winpath')){ exit 2 } elseif(\$p){ [Environment]::SetEnvironmentVariable('Path', '$winpath;'+\$p, 'User') } else { [Environment]::SetEnvironmentVariable('Path', '$winpath', 'User') }"
-        # 用 || 捕获退出码: 否则 set -e 会把 powershell 的非零返回 (如 exit 2 = 已存在)
-        # 当成致命错误, 在 case 处理前就中止脚本, 导致 setup 报失败。
-        local ps_rc=0
-        powershell -NoProfile -Command "$ps_script" || ps_rc=$?
-        case $ps_rc in
-            0) ok "$(msg winpath_updated "$winpath")" ;;       # 提示: 已更新 Windows 用户 PATH (添加 <path>)
-            2) info "$(msg winpath_already "$winpath")" ;;     # 提示: Windows 用户 PATH 已包含 <path>，跳过
-            *) warn "$(msg winpath_fail "$winpath")" ;;        # 提示: 更新 Windows 用户 PATH 失败，请手动添加 <path>
-        esac
+        # 无管理员权限时警告并跳过 (当前会话仍可用, 不写用户 PATH)
+        if ! net session >/dev/null 2>&1; then
+            warn "$(msg env_no_admin "$winpath")"
+        else
+            ps_script="try { \$p=[Environment]::GetEnvironmentVariable('Path','Machine'); if(\$p -and (\$p.Split(';') -contains '$winpath')){ exit 2 }; \$n=if(\$p){'$winpath;'+\$p}else{'$winpath'}; [Environment]::SetEnvironmentVariable('Path',\$n,'Machine') } catch { exit 1 }"
+            # 用 || 捕获退出码: 否则 set -e 会把 powershell 的非零返回 (如 exit 2 = 已存在)
+            # 当成致命错误, 在 case 处理前就中止脚本, 导致 setup 报失败。
+            local ps_rc=0
+            powershell -NoProfile -Command "$ps_script" || ps_rc=$?
+            case $ps_rc in
+                0) ok "$(msg winpath_updated "$winpath")" ;;       # 提示: 已更新 Windows 系统 PATH (添加 <path>)
+                2) info "$(msg winpath_already "$winpath")" ;;     # 提示: Windows 系统 PATH 已包含 <path>，跳过
+                *) warn "$(msg winpath_fail "$winpath")" ;;        # 提示: 更新 Windows 系统 PATH 失败，请手动添加 <path>
+            esac
+        fi
     fi
 }
 
@@ -529,6 +534,76 @@ remove_node_from_path() {
     fi
 }
 
+# ---------- 迁移用户级 node/nvm 目录到系统级 PATH (需管理员, 仅 Windows) ----------
+# 让 SYSTEM 账户/开机服务也能找到 node/nvm: 非 debug + 非 dry-run + 非 --no-env
+# + 管理员权限时, 把用户级 PATH 中的 node/nvm 目录移到系统级 (并从用户级删除)。
+promote_user_node() {
+    if [[ "$DEBUG_MODE" -eq 1 || "$DRY_RUN" -eq 1 || "$DO_ENV" -ne 1 ]]; then return; fi
+    if ! is_mingw; then return; fi
+    if ! command -v powershell >/dev/null 2>&1; then return; fi
+    # 无管理员权限时跳过 (不写用户 PATH, 保持现状)
+    if ! net session >/dev/null 2>&1; then return; fi
+
+    local cmds=() c win targets ps_script line
+    command -v node >/dev/null 2>&1 && cmds+=("node")
+    command -v nvm >/dev/null 2>&1 && cmds+=("nvm")
+    [[ ${#cmds[@]} -eq 0 ]] && return
+
+    targets=""
+    for c in "${cmds[@]}"; do
+        win="$(cygpath -w "$(command -v "$c")" 2>/dev/null || true)"
+        if [[ -n "$win" ]]; then
+            targets="${targets:+$targets,}'$win'"
+        fi
+    done
+    [[ -z "$targets" ]] && return
+
+    # 用 PowerShell 读写机器/用户 PATH (正确处理 UTF-16 与分隔符), 输出每个目录的处理结果:
+    # moved:<dir> 已迁移 / clean:<dir> 清理了用户级重复 / fail:<dir> 迁移失败
+    ps_script="\$targets=@($targets)
+\$m=[Environment]::GetEnvironmentVariable('Path','Machine')
+\$u=[Environment]::GetEnvironmentVariable('Path','User')
+if (\$null -eq \$u) { exit 0 }
+\$mi=@(\$m -split ';' | Where-Object { \$_ })
+\$ui=@(\$u -split ';' | Where-Object { \$_ })
+foreach (\$t in \$targets) {
+    \$dir=Split-Path -Parent \$t
+    if (-not \$dir) { continue }
+    if (\$mi -contains \$dir) {
+        if (\$ui -contains \$dir) {
+            \$ui=@(\$ui | Where-Object { \$_ -ne \$dir })
+            \$nu=(\$ui -join ';')
+            if (\$nu) { [Environment]::SetEnvironmentVariable('Path',\$nu,'User') } else { [Environment]::SetEnvironmentVariable('Path',\$null,'User') }
+            Write-Output ('clean:' + \$dir)
+        }
+        continue
+    }
+    if (\$ui -contains \$dir) {
+        try {
+            \$nm=if (\$m) { \$dir + ';' + \$m } else { \$dir }
+            [Environment]::SetEnvironmentVariable('Path',\$nm,'Machine')
+            \$m=\$nm
+            \$mi=@(\$m -split ';' | Where-Object { \$_ })
+            \$ui=@(\$ui | Where-Object { \$_ -ne \$dir })
+            \$nu=(\$ui -join ';')
+            if (\$nu) { [Environment]::SetEnvironmentVariable('Path',\$nu,'User') } else { [Environment]::SetEnvironmentVariable('Path',\$null,'User') }
+            Write-Output ('moved:' + \$dir)
+        } catch {
+            Write-Output ('fail:' + \$dir)
+        }
+    }
+}"
+    # 用 || 捕获退出码: 避免 set -e 把 powershell 非零返回当成致命错误
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        case "$line" in
+            moved:*) ok "$(msg env_promoted "${line#moved:}")" ;;
+            clean:*) info "$(msg env_promote_clean "${line#clean:}")" ;;
+            fail:*)  warn "$(msg env_promote_fail "${line#fail:}")" ;;
+        esac
+    done < <(powershell -NoProfile -Command "$ps_script" 2>/dev/null)
+}
+
 # ---------- 主流程 ----------
 main() {
     # 提示: === 环境检测与安装 ===
@@ -560,7 +635,7 @@ main() {
             return 1
         fi
 
-        local node_done=1
+        local node_done=1 node_method="direct"
         if [[ "$DEBUG_MODE" -eq 1 ]]; then
             # 提示: 调试模式: 跳过 nvm，直接官方下载...
             info "$(msg debug_skip_nvm)"
@@ -568,6 +643,7 @@ main() {
         elif [[ "$nvm_found" -eq 1 ]]; then
             if install_node_via_nvm; then
                 node_done=0
+                node_method="nvm"
             else
                 # 提示: nvm 安装失败，回退到官方下载方式...
                 warn "$(msg nvm_fail_fallback)"
@@ -579,11 +655,15 @@ main() {
 
         if [[ "$node_done" -ne 0 ]]; then
             install_node || return 1
+            node_method="direct"
         fi
         NODE_INSTALLED=1
     fi
 
-    # ---- 第 2.5 级: npm 淘宝镜像 + nrm 全局安装 (需 node 就绪) ----
+    # ---- 第 2.5 级: 迁移用户级 node/nvm PATH 到系统级 (SYSTEM 服务可见) ----
+    promote_user_node
+
+    # ---- 第 2.6 级: npm 淘宝镜像 + nrm 全局安装 (需 node 就绪) ----
     ensure_npm_mirror
 
     # ---- 第 3 级: dsh (已就绪则跳过, 拒绝重复安装) ----
@@ -600,23 +680,24 @@ main() {
 
     # ---- 环境变量 (仅当我们自己安装了 node; 系统已有 node 则不碰) ----
     if [[ "$NODE_INSTALLED" -eq 1 ]]; then
-        if [[ "$DO_ENV" -eq 1 && "$DEBUG_MODE" -ne 1 ]]; then
+        if [[ "$DEBUG_MODE" -eq 1 ]]; then
+            # 提示: 调试模式: 仅更新当前会话 PATH，不写用户持久化 PATH
+            info "$(msg debug_session_only)"
+            if is_mingw; then
+                export PATH="$INSTALL_DIR:$PATH"
+            else
+                export PATH="$INSTALL_DIR/bin:$PATH"
+            fi
+        elif [[ "$node_method" == "nvm" ]]; then
+            # 提示: node 经 nvm 安装, nvm 已管理 PATH, 不再写 INSTALL_DIR (目录并未创建)
+            info "$(msg env_nvm_skip)"
+        elif [[ "$DO_ENV" -eq 1 ]]; then
             configure_env
         else
-            if [[ "$DEBUG_MODE" -eq 1 ]]; then
-                # 提示: 调试模式: 仅更新当前会话 PATH，不写用户持久化 PATH
-                info "$(msg debug_session_only)"
-                if is_mingw; then
-                    export PATH="$INSTALL_DIR:$PATH"
-                else
-                    export PATH="$INSTALL_DIR/bin:$PATH"
-                fi
-            else
-                # 提示: --no-env 已指定，跳过环境变量配置
-                info "$(msg noenv_skip)"
-                # 提示: 请手动将 <dir> 加入 PATH
-                warn "$(msg noenv_manual "$INSTALL_DIR")"
-            fi
+            # 提示: --no-env 已指定，跳过环境变量配置
+            info "$(msg noenv_skip)"
+            # 提示: 请手动将 <dir> 加入 PATH
+            warn "$(msg noenv_manual "$INSTALL_DIR")"
         fi
     elif [[ "$DEBUG_MODE" -eq 1 && -d "$INSTALL_DIR" ]]; then
         # 脚本目录 node 已存在 (本次未安装): 调试模式仍需把脚本目录 node
@@ -642,7 +723,7 @@ if [[ "$ACTIVATE_MODE" -eq 1 ]]; then
     # source 激活模式: 保留环境修改, 但清掉本脚本的函数/变量, 恢复 shell 选项
     unset -f detect_lang info ok warn fail load_lang msg usage is_mingw detect_nvm \
         detect_node install_node_via_nvm detect_platform install_node ensure_npm_mirror \
-        detect_dsh install_dsh configure_env remove_node_from_path main setup_exit 2>/dev/null
+        detect_dsh install_dsh configure_env remove_node_from_path promote_user_node main setup_exit 2>/dev/null
     eval "$_SETUP_SAVED_SET"
     unset ACTIVATE_MODE _SETUP_SAVED_SET 2>/dev/null
     return "$rc"

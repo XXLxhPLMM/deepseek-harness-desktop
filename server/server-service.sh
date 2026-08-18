@@ -171,12 +171,14 @@ resolve_runtime() {
         elif [[ -x "$node_dir/node" ]]; then
             NODE_PATH="$node_dir/node"
         fi
-        # 调试模式 dsh 装到 ROOT_DIR (npm --prefix ROOT_DIR)
-        local cand
-        cand="$ROOT_DIR/node_modules/@deepseek-ai/dsh"
-        if [[ -f "$cand/package.json" ]]; then
-            DSH_CLI="$("$NODE_PATH" -e "const p=require('$cand/package.json'); const b=p.bin&&p.bin.dsh||p.bin; process.stdout.write(require('path').join('$cand', typeof b==='string'?b:b.dsh))" 2>/dev/null || echo "")"
-        fi
+        # 调试模式: setup --debug 用 npm_config_prefix=nodejs 安装 dsh,
+        # POSIX npm 全局模块在 nodejs/lib/node_modules, win32 布局在 nodejs/node_modules。
+        local cand cli
+        for cand in "$node_dir/lib/node_modules/@deepseek-ai/dsh" "$node_dir/node_modules/@deepseek-ai/dsh"; do
+            [[ -f "$cand/package.json" ]] || continue
+            cli="$("$NODE_PATH" -e "const p=require('$cand/package.json'); const b=p.bin&&p.bin.dsh||p.bin; process.stdout.write(require('path').join('$cand', typeof b==='string'?b:b.dsh))" 2>/dev/null || true)"
+            if [[ -n "$cli" && -f "$cli" ]]; then DSH_CLI="$cli"; break; fi
+        done
     else
         if command -v node >/dev/null 2>&1; then
             NODE_PATH="$(command -v node)"
