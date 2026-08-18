@@ -15,9 +15,11 @@ foreach ($a in $args) {
 }
 
 if ($isHelp) {
+    $LASTEXITCODE = 0
     & $Target -Help
     exit $LASTEXITCODE
 }
 
+$LASTEXITCODE = 0
 & $Target uninstall
 exit $LASTEXITCODE

@@ -160,8 +160,8 @@ bash setup.sh --debug          # 격리 검증 설치
 예:
 
 ```bat
-install-server-service.cmd --port 8080
-bash install-server-service.sh
+server\install-server-service.cmd --port 8080
+bash server/install-server-service.sh
 ```
 
 > Windows의 `install` / `uninstall`은 관리자 권한, Linux / macOS는 root / sudo가 필요합니다.

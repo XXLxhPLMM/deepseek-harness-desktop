@@ -16,7 +16,7 @@ rem  i18n: load locales/{lang}.lang by system language (default zh). Use:
 rem       call :msg <key> <arg1> <arg2> -> result stored in !M!
 rem
 rem  NOTE: keep this file pure ASCII and CRLF line endings, and never write
-rem  "if(" (if directly followed by an open paren) anywhere in this file.
+rem  a compact if-parenthesis form anywhere in this file.
 rem ============================================================================
 setlocal EnableExtensions EnableDelayedExpansion
 

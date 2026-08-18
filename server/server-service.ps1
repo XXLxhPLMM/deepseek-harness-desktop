@@ -171,9 +171,10 @@ function Resolve-Runtime {
     } else {
         $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
         if ($nodeCmd) { $Script:NodePath = $nodeCmd.Source }
-        if (Get-Command npm -ErrorAction SilentlyContinue) {
+        $npmCmd = Get-Command npm.cmd -ErrorAction SilentlyContinue
+        if ($npmCmd) {
             try {
-                $root = npm root -g 2>$null
+                $root = & npm.cmd root -g 2>$null
                 $pj = Join-Path $root "@deepseek-ai\dsh\package.json"
                 if (Test-Path $pj) {
                     $data = Get-Content $pj -Raw | ConvertFrom-Json
@@ -237,14 +238,10 @@ function Generate-Launchers {
         if ($Script:Debug) {
             $webCmd += "`n`"$($Script:NodePath)`" `"$($Script:DshCli)`" web --patch `"%~dp0service-directory-picker-browse.yml`" --port $($Script:Port) --host $($Script:BindHost)"
         } else {
-            $webCmd += "`ndsh web --patch `"%~dp0service-directory-picker-browse.yml`" --port $($Script:Port) --host $($Script:BindHost)"
+            $webCmd += "`n`"$($Script:NodePath)`" `"$($Script:DshCli)`" web --patch `"%~dp0service-directory-picker-browse.yml`" --port $($Script:Port) --host $($Script:BindHost)"
         }
     } else {
-        if ($Script:Debug) {
-            $webCmd = "`"$($Script:NodePath)`" `"$($Script:DshCli)`" web --port $($Script:Port) --host $($Script:BindHost)"
-        } else {
-            $webCmd = "dsh web --port $($Script:Port) --host $($Script:BindHost)"
-        }
+        $webCmd = "`"$($Script:NodePath)`" `"$($Script:DshCli)`" web --port $($Script:Port) --host $($Script:BindHost)"
     }
     $lines = @(
         "@echo off",
@@ -287,7 +284,7 @@ function Install-Service {
     # launcher flag and must come right after `web`, before the inner app flags.
 Generate-Launchers
     if ($Script:ServiceMode) {
-        $taskCmd = "cmd /c \`"\`"$($Script:Runner)\`"\`""
+            $taskCmd = "cmd /c \`"\`"$($Script:Runner)\`" --port $($Script:Port)\`""
         schtasks.exe /create /tn $Script:SvcName /tr $taskCmd /sc onstart /ru SYSTEM /rl highest /f
     } else {
         # Interactive mode: launch via a hidden wscript wrapper so no cmd window
@@ -303,14 +300,20 @@ Generate-Launchers
         } catch { $vbOk = $false }
         Remove-Item -LiteralPath $probeVbs -Force -ErrorAction SilentlyContinue
         if ($vbOk) {
-            $taskCmd = "wscript.exe \`"$($Script:RunnerVbs)\`""
+            $taskCmd = "wscript.exe \`"$($Script:RunnerVbs)\`" --port $($Script:Port)"
         } else {
-            $taskCmd = "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \`"$($Script:RunnerPs1)\`""
+            $taskCmd = "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \`"$($Script:RunnerPs1)\`" --port $($Script:Port)"
         }
         schtasks.exe /create /tn $Script:SvcName /tr $taskCmd /sc onstart /ru $env:USERNAME /it /rl highest /f
     }
     if ($LASTEXITCODE -ne 0) { Write-Fail (msg srvc_install_fail $Script:SvcName); exit 1 }
     schtasks.exe /run /tn $Script:SvcName | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Fail (msg srvc_install_fail $Script:SvcName); exit 1 }
+    for ($i = 0; $i -lt 10; $i++) {
+        if (Get-SvcRunning) { break }
+        Start-Sleep -Milliseconds 500
+    }
+    if (-not (Get-SvcRunning)) { Write-Fail (msg srvc_install_fail $Script:SvcName); exit 1 }
     Write-Ok (msg srvc_installed $Script:SvcName)
 }
 
@@ -339,13 +342,14 @@ function Start-ServiceX {
     # task does not fail on a missing file).
     $t = Get-ScheduledTask -TaskName $Script:SvcName
     $Script:ServiceMode = ($t.Principal.UserId -match "SYSTEM")
-    $Script:Debug = $false
+    # Preserve debug mode when a generated launcher must be recreated.
     $launchers = @(
         (Join-Path $Script:ScriptDir "run-dsh-web.cmd"),
         (Join-Path $Script:ScriptDir "run-dsh-web.vbs"),
         (Join-Path $Script:ScriptDir "run-dsh-web.ps1")
     )
     if (($launchers | Where-Object { -not (Test-Path -LiteralPath $_) }).Count -gt 0) {
+        Resolve-Runtime
         Generate-Launchers
     }
     Write-Info (msg srvc_starting)

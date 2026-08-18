@@ -111,11 +111,13 @@ if ($Script:Debug) {
 if (-not $dshFound) { Write-Fail (msg ud_no_dsh); exit 1 }
 
 # 当前版本
-$curVer = ((& dsh --version 2>$null) | Select-Object -First 1).ToString().Trim()
+$curVer = [string]((& dsh --version 2>$null) | Select-Object -First 1)
+$curVer = $curVer.Trim()
 Write-Info (msg ud_current $(if ($curVer) { $curVer } else { "unknown" }))
 
 if ($Script:DryRun) {
-    $latest = ((npm view $Script:DshPkg version 2>$null) | Select-Object -First 1).ToString().Trim()
+    $latest = [string]((& npm.cmd view $Script:DshPkg version 2>$null) | Select-Object -First 1)
+    $latest = $latest.Trim()
     Write-Info (msg ud_latest $(if ($latest) { $latest } else { "unknown" }))
     if ($curVer -and $latest -and $curVer -eq $latest) { Write-Ok (msg ud_up_to_date) }
     exit 0
@@ -123,10 +125,11 @@ if ($Script:DryRun) {
 
 # 更新
 Write-Info (msg ud_updating)
-& npm install -g "$($Script:DshPkg)@latest" 2>$null | Out-Null
+& npm.cmd install -g "$($Script:DshPkg)@latest" 2>$null | Out-Null
 if ($LASTEXITCODE -ne 0) { Write-Fail (msg ud_fail $Script:DshPkg); exit 1 }
 
-$newVer = ((& dsh --version 2>$null) | Select-Object -First 1).ToString().Trim()
+$newVer = [string]((& dsh --version 2>$null) | Select-Object -First 1)
+$newVer = $newVer.Trim()
 Write-Ok (msg ud_done $(if ($newVer) { $newVer } else { "unknown" }))
 
 # 服务已安装则重启使其生效

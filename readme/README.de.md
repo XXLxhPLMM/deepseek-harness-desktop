@@ -160,8 +160,8 @@ Die Wrapper reichen Argumente direkt durch:
 Zum Beispiel:
 
 ```bat
-install-server-service.cmd --port 8080
-bash install-server-service.sh
+server\install-server-service.cmd --port 8080
+bash server/install-server-service.sh
 ```
 
 > `install` / `uninstall` unter Windows erfordert Administratorrechte; Linux / macOS erfordern root / sudo.

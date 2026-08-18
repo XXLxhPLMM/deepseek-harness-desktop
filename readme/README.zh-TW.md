@@ -160,8 +160,8 @@ wrapper 直接透傳參數：
 例如：
 
 ```bat
-install-server-service.cmd --port 8080
-bash install-server-service.sh
+server\install-server-service.cmd --port 8080
+bash server/install-server-service.sh
 ```
 
 > Windows 的 `install` / `uninstall` 需要系統管理員權限；Linux / macOS 需要 root / sudo。

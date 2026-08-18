@@ -28,7 +28,7 @@ rem ---- language detection (load FIRST, default zh; zh-TW for Traditional) ----
 rem Runs before chcp: chcp 65001 makes CurrentUICulture fall back to en-US, so use
 rem InstalledUICulture (system UI language). SETUP_LANG env var overrides detection
 rem (for testing / forcing a language).
-rem NOTE: NEVER write "if(" (if directly followed by an open paren) anywhere in this
+rem NOTE: never use a compact if-parenthesis form anywhere in this
 rem file, even inside a quoted PowerShell string: cmd mis-parses it as a block open
 rem and corrupts goto/call label lookup later in the script. Always keep a space.
 set "LANG=zh"
@@ -650,15 +650,23 @@ rem run npm in a child cmd: npm.cmd's internal goto would corrupt the parent
 rem batch's label tracking when invoked from a call :label subroutine
 cmd /c npm install -g "%DSH_PKG%"
 if errorlevel 1 goto :dsh_fail
-rem refresh PATH if npm global dir is not on it yet
+ rem refresh PATH if npm global dir is not on it yet
 set "DSH_FOUND="
 where dsh >nul 2>nul && set "DSH_FOUND=1"
 if not defined DSH_FOUND if exist "%APPDATA%\npm\dsh.cmd" (
     set "PATH=%APPDATA%\npm;%PATH%"
     set "DSH_FOUND=1"
 )
-if not defined DSH_FOUND if exist "%SCRIPT_DIR%nodejs\dsh.cmd" (
-    set "PATH=%SCRIPT_DIR%nodejs;%PATH%"
+if not defined DSH_FOUND (
+    set "DSH_PREFIX="
+    for /f "usebackq delims=" %%p in (`cmd /c npm prefix -g 2^>nul`) do if not defined DSH_PREFIX set "DSH_PREFIX=%%p"
+    if defined DSH_PREFIX if exist "!DSH_PREFIX!\dsh.cmd" (
+        set "PATH=!DSH_PREFIX!;!PATH!"
+        set "DSH_FOUND=1"
+    )
+)
+if not defined DSH_FOUND if exist "%INSTALL_DIR%\dsh.cmd" (
+    set "PATH=%INSTALL_DIR%;%PATH%"
     set "DSH_FOUND=1"
 )
 if not defined DSH_FOUND goto :dsh_fail
@@ -702,7 +710,7 @@ if "%DRY_RUN%"=="1" (
         call :msg dryrun_skip
         echo [INFO] !M!
     )
-    exit /b 0
+    exit /b 1
 )
 
 if "%DEBUG_MODE%"=="1" (
@@ -796,7 +804,12 @@ rem current cmd session): endlocal & set the key vars with the inner values.
 rem %KEEP_*% expand during line parse (before endlocal) so they carry the
 rem inner values; npm_config_* only exist in debug mode.
 set "KEEP_PATH=%PATH%"
+if "%DEBUG_MODE%"=="1" (
+    goto :finish_debug
+)
+endlocal & exit /b %EXIT_CODE%
+
+:finish_debug
 set "KEEP_REG=%npm_config_registry%"
 set "KEEP_PFX=%npm_config_prefix%"
-endlocal & set "PATH=%KEEP_PATH%" & set "npm_config_registry=%KEEP_REG%" & set "npm_config_prefix=%KEEP_PFX%"
-exit /b %EXIT_CODE%
+endlocal & set "PATH=%KEEP_PATH%" & set "npm_config_registry=%KEEP_REG%" & set "npm_config_prefix=%KEEP_PFX%" & exit /b %EXIT_CODE%

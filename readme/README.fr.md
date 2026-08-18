@@ -160,8 +160,8 @@ Les wrappers transmettent les arguments directement :
 Par exemple :
 
 ```bat
-install-server-service.cmd --port 8080
-bash install-server-service.sh
+server\install-server-service.cmd --port 8080
+bash server/install-server-service.sh
 ```
 
 > `install` / `uninstall` sous Windows nécessite des privilèges administrateur ; Linux / macOS nécessitent root / sudo.

@@ -23,7 +23,7 @@ rem ============================================================================
 setlocal EnableExtensions EnableDelayedExpansion
 
 rem ---- language detection (load FIRST, default zh) ----
-rem NOTE: NEVER write "if(" (if directly followed by an open paren) anywhere in
+rem NOTE: never use a compact if-parenthesis form anywhere in this
 rem this file, even inside a quoted PowerShell string: cmd mis-parses it as a
 rem block open and corrupts goto/call label lookup later in the script.
 rem Always keep a space after if/elseif.
@@ -105,7 +105,7 @@ if errorlevel 1 (
 
 rem ---- 2) resolve service port: --port > task config > DSH_PORT > default ----
 if "%CLI_PORT%"=="" call :get_task_port
-if defined TASK_PORT set "PORT=%TASK_PORT%"
+if not "%TASK_PORT%"=="" set "PORT=%TASK_PORT%"
 
 call :msg sh_port_using "%PORT%"
 echo [INFO] !M!
@@ -124,15 +124,25 @@ rem breaks the block/goto context). Keep it flat in main flow with goto dispatch
 call :msg sh_service_start
 echo [INFO] !M!
 call :svc_exists
-if not errorlevel 1 goto :svc_start
+if not errorlevel 1 if "%CLI_PORT%"=="" goto :svc_start
 goto :svc_install
 
 :svc_install
-call "%SCRIPT_DIR%server\server-service.cmd" install /nopause >nul 2>nul
+call "%SCRIPT_DIR%server\server-service.cmd" install --port "%PORT%" /nopause >nul 2>nul
+if errorlevel 1 (
+    call :msg sh_service_fail "%URL%"
+    echo [WARN] !M!
+    goto :finish
+)
 goto :svc_wait
 
 :svc_start
-call "%SCRIPT_DIR%server\server-service.cmd" start /nopause >nul 2>nul
+call "%SCRIPT_DIR%server\server-service.cmd" start --port "%PORT%" /nopause >nul 2>nul
+if errorlevel 1 (
+    call :msg sh_service_fail "%URL%"
+    echo [WARN] !M!
+    goto :finish
+)
 goto :svc_wait
 
 :svc_wait

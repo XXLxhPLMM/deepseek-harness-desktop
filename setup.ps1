@@ -247,6 +247,7 @@ function Install-Node-Direct {
     # 提示: 下载 <url> ...
     Write-Info (msg downloading $distUrl)
     try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         Invoke-WebRequest -Uri $distUrl -OutFile $zipPath -UseBasicParsing
     } catch {
         # 提示: 下载失败: <错误信息>

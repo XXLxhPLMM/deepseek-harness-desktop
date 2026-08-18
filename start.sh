@@ -104,7 +104,7 @@ load_lang
 # ---------- 解析参数 ----------
 usage() {
     echo "$(msg sh_usage "$0")"
-    echo "  --port <port>    dsh service port (default: $DEFAULT_PORT)"
+    echo "$(msg sh_usage_port "$DEFAULT_PORT")"
     echo "$(msg sh_usage_debug)"
     echo "$(msg sh_usage_help)"
     exit 0
@@ -112,7 +112,12 @@ usage() {
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --port)   PORT="${2:-$DEFAULT_PORT}"; CLI_PORT="$PORT"; shift 2 ;;
+        --port)
+            if [[ $# -lt 2 || -z "$2" ]]; then
+                fail "$(msg sh_unknown "$1")"
+                usage
+            fi
+            PORT="$2"; CLI_PORT="$PORT"; shift 2 ;;
         --debug)  DEBUG_MODE=1; shift ;;
         --help|-h) usage ;;
         *) echo "$(msg sh_unknown "$1")" >&2; usage ;;
@@ -155,10 +160,10 @@ get_dsh_port() {
     if [[ -n "$arg_port" ]]; then echo "$arg_port"; return; fi
     if is_mingw; then
         # Windows: 从计划任务 dsh-web 配置提取
-        port="$(powershell -NoProfile -Command "$t=Get-ScheduledTask -TaskName '$SVC_NAME' -ErrorAction SilentlyContinue; if ($t) {$m=[regex]::Match($t.Actions.Arguments,'--port\s+(\d+)'); if ($m.Success) {Write-Output $m.Groups[1].Value}}" 2>/dev/null)"
+        port="$(powershell -NoProfile -Command "\$t=Get-ScheduledTask -TaskName '$SVC_NAME' -ErrorAction SilentlyContinue; if (\$t) {\$m=[regex]::Match(\$t.Actions.Arguments,'--port\s+(\d+)'); if (\$m.Success) {Write-Output \$m.Groups[1].Value}}" 2>/dev/null)"
         if [[ -n "$port" ]]; then echo "$port"; return; fi
     elif [[ "$(uname -s)" == Linux && -f /etc/systemd/system/$SVC_NAME.service ]]; then
-        port_file="$(grep -o -- '--port [0-9]*' /etc/systemd/system/$SVC_NAME.service 2>/dev/null | grep -o '[0-9]*' | head -n1)"
+        port_file="$(sed -nE 's/.*--port[[:space:]]+"?([0-9]+)"?.*/\1/p' "/etc/systemd/system/$SVC_NAME.service" 2>/dev/null | head -n1)"
         if [[ -n "$port_file" ]]; then echo "$port_file"; return; fi
     elif [[ "$(uname -s)" == Darwin && -f "/Library/LaunchDaemons/$MACOS_LABEL.plist" ]]; then
         port="$(grep -A1 '<key>--port</key>' "/Library/LaunchDaemons/$MACOS_LABEL.plist" 2>/dev/null | grep -o '[0-9]*' | head -n1)"
@@ -169,7 +174,13 @@ get_dsh_port() {
 
 # ---------- 端口就绪探测 (HTTP) ----------
 service_up() {
-    curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 3 "http://127.0.0.1:$PORT/" 2>/dev/null | grep -qE '^[1-9][0-9][0-9]$'
+    if command -v curl >/dev/null 2>&1; then
+        curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 3 "http://127.0.0.1:$PORT/" 2>/dev/null | grep -qE '^[1-9][0-9][0-9]$'
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q --timeout=3 -O /dev/null "http://127.0.0.1:$PORT/"
+    else
+        return 1
+    fi
 }
 
 # ---------- 3) 检测 dsh 服务是否在运行 ----------
@@ -194,19 +205,31 @@ start_service() {
     if is_mingw; then
         # Windows git-bash: 任务已注册则直接 /run, 否则走 install (注册并启动)。
         # MSYS_NO_PATHCONV 防止 /run 被转成路径。
-        if MSYS_NO_PATHCONV=1 schtasks /query /tn "$SVC_NAME" >/dev/null 2>&1; then
-            MSYS_NO_PATHCONV=1 schtasks /run /tn "$SVC_NAME" >/dev/null 2>&1 || true
+        if MSYS_NO_PATHCONV=1 schtasks /query /tn "$SVC_NAME" >/dev/null 2>&1 && [[ -z "$CLI_PORT" ]]; then
+            if ! MSYS_NO_PATHCONV=1 schtasks /run /tn "$SVC_NAME" >/dev/null 2>&1; then
+                warn "$(msg sh_service_fail "http://localhost:$PORT")"
+                return 1
+            fi
         else
-            MSYS_NO_PATHCONV=1 cmd //c "call \"$SCRIPT_DIR/server/server-service.cmd\" install /nopause" >/dev/null 2>&1 || true
+            if ! cmd //c "call \"$SCRIPT_DIR/server/server-service.cmd\" install --port $PORT /nopause" >/dev/null 2>&1; then
+                warn "$(msg sh_service_fail "http://localhost:$PORT")"
+                return 1
+            fi
         fi
     elif [[ -f "$svc_script" && ( "$os" == Linux || "$os" == Darwin ) ]]; then
         local installed=0
         if [[ "$os" == Linux && -f /etc/systemd/system/$SVC_NAME.service ]]; then installed=1; fi
         if [[ "$os" == Darwin && -f "/Library/LaunchDaemons/$MACOS_LABEL.plist" ]]; then installed=1; fi
-        if [[ "$installed" -eq 1 ]]; then
-            bash "$svc_script" start >/dev/null 2>&1 || true
+        if [[ "$installed" -eq 1 && -z "$CLI_PORT" ]]; then
+            if ! bash "$svc_script" start >/dev/null 2>&1; then
+                warn "$(msg sh_service_fail "http://localhost:$PORT")"
+                return 1
+            fi
         else
-            bash "$svc_script" install >/dev/null 2>&1 || true
+            if ! bash "$svc_script" --port "$PORT" install >/dev/null 2>&1; then
+                warn "$(msg sh_service_fail "http://localhost:$PORT")"
+                return 1
+            fi
         fi
     fi
     info "$(msg sh_service_wait)"

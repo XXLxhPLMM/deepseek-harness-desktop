@@ -160,8 +160,8 @@ bash setup.sh --debug          # 隔離検証インストール
 例:
 
 ```bat
-install-server-service.cmd --port 8080
-bash install-server-service.sh
+server\install-server-service.cmd --port 8080
+bash server/install-server-service.sh
 ```
 
 > Windows の `install` / `uninstall` は管理者権限、Linux / macOS は root / sudo が必要です。

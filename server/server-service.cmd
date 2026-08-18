@@ -173,13 +173,13 @@ set "VBS_OK="
 for /f "usebackq delims=" %%o in (`cscript //nologo "%TEMP%\dsh_vbs_probe.vbs" 2^>nul`) do if "%%o"=="OK" set "VBS_OK=1"
 del /f /q "%TEMP%\dsh_vbs_probe.vbs" >nul 2>nul
 if "%SERVICE_MODE%"=="1" (
-    set "BINPATH=cmd /c \"\"%RUNNER%\"\""
+    set "BINPATH=cmd /c \"\"%RUNNER%\" --port %PORT%\""
     schtasks /create /tn "%SVC_NAME%" /tr "!BINPATH!" /sc onstart /ru SYSTEM /rl highest /f >nul 2>nul
 ) else (
     if defined VBS_OK (
-        set "BINPATH=wscript.exe \"%RUNNER_VBS%\""
+        set "BINPATH=wscript.exe \"%RUNNER_VBS%\" --port %PORT%"
     ) else (
-        set "BINPATH=powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"%RUNNER_PS1%\""
+        set "BINPATH=powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"%RUNNER_PS1%\" --port %PORT%"
     )
     schtasks /create /tn "%SVC_NAME%" /tr "!BINPATH!" /sc onstart /ru "%USERNAME%" /it /rl highest /f >nul 2>nul
 )
@@ -245,11 +245,12 @@ rem Derive the installed mode from the task itself, then make sure the runtime
 rem launcher trio exists (normally created at install; regenerate if lost so the
 rem task does not fail on a missing file).
 call :get_task_mode
-set "DEBUG_MODE=0"
 set "RUNNER=%SCRIPT_DIR%run-dsh-web.cmd"
 set "RUNNER_VBS=%SCRIPT_DIR%run-dsh-web.vbs"
 set "RUNNER_PS1=%SCRIPT_DIR%run-dsh-web.ps1"
 if exist "%RUNNER%" if exist "%RUNNER_VBS%" if exist "%RUNNER_PS1%" goto :start_launchers_ok
+call :resolve_runtime
+if errorlevel 1 goto :finish
 call :gen_launchers
 if errorlevel 1 goto :finish
 :start_launchers_ok
@@ -311,6 +312,7 @@ set "NODE_EXE="
 set "DSH_CLI="
 set "DSH_PKG_DIR="
 set "DSH_BIN_REL="
+set "DSH_PREFIX="
 if "%DEBUG_MODE%"=="1" (
     if exist "%ROOT_DIR%\nodejs\node.exe" set "NODE_EXE=%ROOT_DIR%\nodejs\node.exe"
     if exist "%ROOT_DIR%\nodejs\node_modules\@deepseek-ai\dsh\package.json" set "DSH_PKG_DIR=%ROOT_DIR%\nodejs\node_modules\@deepseek-ai\dsh"
@@ -322,6 +324,8 @@ if not errorlevel 1 (
 )
 where npm >nul 2>nul
 if not errorlevel 1 (
+    for /f "usebackq delims=" %%p in (`npm prefix -g 2^>nul`) do if not defined DSH_PREFIX set "DSH_PREFIX=%%p"
+    if defined DSH_PREFIX if exist "!DSH_PREFIX!\dsh.cmd" set "DSH_CLI=!DSH_PREFIX!\dsh.cmd"
     for /f "usebackq delims=" %%r in (`npm root -g 2^>nul`) do (
         if not defined DSH_PKG_DIR if exist "%%r\@deepseek-ai\dsh\package.json" set "DSH_PKG_DIR=%%r\@deepseek-ai\dsh"
     )
@@ -357,7 +361,7 @@ exit /b 1
 
 rem ---- task running: errorlevel 0=running, 1=not ----
 rem Uses PowerShell (State enum is locale-independent). NOTE: never write
-rem "if(" without a space inside the quoted string (cmd label mis-parse).
+rem Keep a space after PowerShell if keywords inside quoted commands.
 :svc_running
 powershell -NoProfile -Command "$t=Get-ScheduledTask -TaskName '%SVC_NAME%' -ErrorAction SilentlyContinue; if ($t -and $t.State -eq 'Running'){exit 0}else{exit 1}" >nul 2>nul
 if not errorlevel 1 exit /b 0
@@ -373,7 +377,7 @@ exit /b 0
 
 rem ---- task mode: errorlevel 0=SYSTEM(service), 1=interactive ----
 :get_task_mode
-powershell -NoProfile -Command "$t=Get-ScheduledTask -TaskName '%SVC_NAME%' -ErrorAction SilentlyContinue; if(-not $t){exit 2}; if($t.Principal.UserId -match 'SYSTEM'){exit 0}else{exit 1}" >nul 2>nul
+powershell -NoProfile -Command "$t=Get-ScheduledTask -TaskName '%SVC_NAME%' -ErrorAction SilentlyContinue; if (-not $t) {exit 2}; if ($t.Principal.UserId -match 'SYSTEM') {exit 0} else {exit 1}" >nul 2>nul
 if errorlevel 1 (
     set "SERVICE_MODE=0"
 ) else (
@@ -402,13 +406,13 @@ if "%SERVICE_MODE%"=="1" (
     if "%DEBUG_MODE%"=="1" (
         >> "%RUNNER%" echo "%NODE_EXE%" "%DSH_CLI%" web --patch "%%~dp0service-directory-picker-browse.yml" --port %PORT% --host %HOST%
     ) else (
-        >> "%RUNNER%" echo dsh web --patch "%%~dp0service-directory-picker-browse.yml" --port %PORT% --host %HOST%
+        >> "%RUNNER%" echo "%DSH_CLI%" web --patch "%%~dp0service-directory-picker-browse.yml" --port %PORT% --host %HOST%
     )
 ) else (
     if "%DEBUG_MODE%"=="1" (
         >> "%RUNNER%" echo "%NODE_EXE%" "%DSH_CLI%" web --port %PORT% --host %HOST%
     ) else (
-        >> "%RUNNER%" echo dsh web --port %PORT% --host %HOST%
+        >> "%RUNNER%" echo "%DSH_CLI%" web --port %PORT% --host %HOST%
     )
 )
 rem VBS launcher self-locates its own directory via WScript.ScriptFullName; the

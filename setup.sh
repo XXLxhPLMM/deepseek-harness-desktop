@@ -129,7 +129,7 @@ msg() {
     local key="$1" var s i
     shift
     var="MSG_$key"
-    s="${!var}"
+    s="${!var-}"
     if [[ -z "$s" ]]; then
         printf '%s' "[missing:$key]"
         return
@@ -144,6 +144,7 @@ msg() {
 load_lang
 
 # ---------- 解析参数 ----------
+_SETUP_PARSE_RC=""
 usage() {
     # 提示: 用法 / --dir / --no-env / --dry-run / --debug / --help
     echo "$(msg usage_usage "$0")"
@@ -157,14 +158,49 @@ usage() {
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --dir)     INSTALL_DIR="$2"; shift 2 ;;
+        --dir)
+            if [[ $# -lt 2 || -z "$2" ]]; then
+                fail "$(msg dir_need_path "$1")"
+                usage
+                if [[ "$ACTIVATE_MODE" -eq 1 ]]; then
+                    _SETUP_PARSE_RC=1
+                    break
+                fi
+                exit 1
+            fi
+            INSTALL_DIR="$2"; shift 2 ;;
         --no-env)  DO_ENV=0; shift ;;
         --dry-run) DRY_RUN=1; shift ;;
         --debug)   DEBUG_MODE=1; shift ;;
-        --help|-h) usage; setup_exit 0 ;;
-        *) echo "$(msg unknown_arg "$1")" >&2; usage; setup_exit 0 ;;
+        --help|-h)
+            usage
+            if [[ "$ACTIVATE_MODE" -eq 1 ]]; then
+                _SETUP_PARSE_RC=0
+                break
+            fi
+            exit 0
+            ;;
+        *)
+            echo "$(msg unknown_arg "$1")" >&2
+            usage
+            if [[ "$ACTIVATE_MODE" -eq 1 ]]; then
+                _SETUP_PARSE_RC=1
+                break
+            fi
+            exit 1
+            ;;
     esac
 done
+
+if [[ -n "${_SETUP_PARSE_RC:-}" ]]; then
+    rc="$_SETUP_PARSE_RC"
+    unset -f detect_lang info ok warn fail load_lang msg usage is_mingw detect_nvm \
+        detect_node install_node_via_nvm detect_platform install_node ensure_npm_mirror \
+        detect_dsh install_dsh configure_env remove_node_from_path promote_user_node main setup_exit 2>/dev/null
+    eval "$_SETUP_SAVED_SET"
+    unset ACTIVATE_MODE _SETUP_SAVED_SET _SETUP_PARSE_RC 2>/dev/null
+    return "$rc"
+fi
 
 is_mingw() { [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; }
 
@@ -185,7 +221,7 @@ detect_nvm() {
         return 0
     fi
     # nvm-windows (NVM_HOME)
-    if [[ -n "${NVM_HOME:-}" ]] && command -v nvm >/dev/null 2>&1; then
+    if [[ -n "${NVM_HOME:-}" && -x "$NVM_HOME/nvm.exe" ]]; then
         return 0
     fi
     return 1
@@ -235,7 +271,10 @@ install_node_via_nvm() {
     else
         # 提示: nvm install 22.23.2 ...
         info "$(msg nvm_install_run "${VERSION#v}")"
-        nvm install "${VERSION#v}"
+        nvm install "${VERSION#v}" || {
+            warn "$(msg nvm_install_fail "${VERSION#v}")"
+            return 1
+        }
     fi
     nvm use "${VERSION#v}" || {
         # 提示: nvm use 可能需要管理员权限。请手动运行: nvm use 22.23.2
@@ -293,7 +332,10 @@ download_file() {
 # ---- 下载并解压 ----
 install_node() {
     local os arch dist_url tmpfile
-    read -r os arch <<<"$(detect_platform)"
+    if ! read -r os arch <<<"$(detect_platform)"; then
+        fail "$(msg arch_unsupported "$(uname -s)")"
+        return 1
+    fi
     # 提示: 平台: <os> / <arch>
     info "$(msg platform "$os" "$arch")"
 
@@ -324,7 +366,16 @@ install_node() {
     info "$(msg extracting)"
     case "$os" in
         win)
-            unzip -q -o "$tmpfile" -d "$(dirname "$INSTALL_DIR")"
+            if ! command -v unzip >/dev/null 2>&1; then
+                fail "$(msg extract_fail "$tmpfile")"
+                rm -f "$tmpfile"
+                return 1
+            fi
+            unzip -q -o "$tmpfile" -d "$(dirname "$INSTALL_DIR")" || {
+                fail "$(msg extract_fail "$tmpfile")"
+                rm -f "$tmpfile"
+                return 1
+            }
             # 将解压出的 node-xxx-win-x64 内容移动到 INSTALL_DIR
             if [[ -d "$(dirname "$INSTALL_DIR")/node-$VERSION-win-$arch" ]]; then
                 cp -rf "$(dirname "$INSTALL_DIR")/node-$VERSION-win-$arch/." "$INSTALL_DIR/"
@@ -344,6 +395,7 @@ install_node() {
     else
         # 提示: 解压完成，但未找到可执行文件，请检查 <dir>
         warn "$(msg exe_not_found "$INSTALL_DIR")"
+        return 1
     fi
 }
 
@@ -653,7 +705,7 @@ main() {
         if [[ "$DEBUG_MODE" -eq 1 ]]; then
             # 提示: 调试模式: 跳过 nvm，直接官方下载...
             info "$(msg debug_skip_nvm)"
-            install_node && node_done=0
+            if install_node; then node_done=0; fi
         elif [[ "$nvm_found" -eq 1 ]]; then
             if install_node_via_nvm; then
                 node_done=0
