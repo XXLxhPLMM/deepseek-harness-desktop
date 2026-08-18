@@ -123,6 +123,14 @@ if ($Script:DryRun) {
     exit 0
 }
 
+# 服务已安装则先停掉
+$svcRunning = $false
+if (Get-ScheduledTask -TaskName $Script:SvcName -ErrorAction SilentlyContinue) {
+    Write-Info (msg ud_stopping)
+    & (Join-Path $Script:ScriptDir "server-service.ps1") stop | Out-Null
+    $svcRunning = $true
+}
+
 # 更新
 Write-Info (msg ud_updating)
 & npm.cmd install -g "$($Script:DshPkg)@latest" 2>$null | Out-Null
@@ -132,10 +140,9 @@ $newVer = [string]((& dsh --version 2>$null) | Select-Object -First 1)
 $newVer = $newVer.Trim()
 Write-Ok (msg ud_done $(if ($newVer) { $newVer } else { "unknown" }))
 
-# 服务已安装则重启使其生效
-if (Get-ScheduledTask -TaskName $Script:SvcName -ErrorAction SilentlyContinue) {
+# 服务原已安装则重启使其生效
+if ($svcRunning) {
     Write-Info (msg ud_restarting)
-    & (Join-Path $Script:ScriptDir "server-service.ps1") stop | Out-Null
     & (Join-Path $Script:ScriptDir "server-service.ps1") start | Out-Null
     Write-Ok (msg ud_restart_done)
 }

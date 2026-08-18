@@ -155,6 +155,14 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
     exit 0
 fi
 
+# ---------- 服务已安装则先停掉 ----------
+SVC_RUNNING=0
+if svc_installed; then
+    info "$(msg ud_stopping)"
+    bash "$SCRIPT_DIR/server-service.sh" stop >/dev/null 2>&1 || true
+    SVC_RUNNING=1
+fi
+
 # ---------- 更新 ----------
 info "$(msg ud_updating)"
 if ! npm install -g "$DSH_PKG@latest" >/dev/null 2>&1; then
@@ -165,10 +173,9 @@ fi
 new_ver="$(dsh --version 2>/dev/null | head -n1)"
 ok "$(msg ud_done "${new_ver:-unknown}")"
 
-# ---------- 服务已安装则重启使其生效 ----------
-if svc_installed; then
+# ---------- 服务原已安装则重启使其生效 ----------
+if [[ "$SVC_RUNNING" -eq 1 ]]; then
     info "$(msg ud_restarting)"
-    bash "$SCRIPT_DIR/server-service.sh" stop >/dev/null 2>&1 || true
     bash "$SCRIPT_DIR/server-service.sh" start >/dev/null 2>&1 || true
     ok "$(msg ud_restart_done)"
 fi

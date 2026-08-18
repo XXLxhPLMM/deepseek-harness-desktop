@@ -92,6 +92,14 @@ echo [INFO] !M!
 
 if "%DRY_RUN%"=="1" goto :dry_run
 
+rem ---- stop the service before updating if it is installed ----
+schtasks /query /tn "%SVC_NAME%" >nul 2>nul
+if errorlevel 1 goto :update
+call :msg ud_stopping
+echo [INFO] !M!
+call "%SCRIPT_DIR%server-service.cmd" stop /nopause >nul 2>nul
+
+:update
 rem ---- update to latest ----
 call :msg ud_updating
 echo [INFO] !M!
@@ -110,12 +118,11 @@ if not defined NEW_VER set "NEW_VER=unknown"
 call :msg ud_done "%NEW_VER%"
 echo [OK]    !M!
 
-rem ---- restart the service if it is installed ----
+rem ---- restart the service if it was installed and running before the update ----
 schtasks /query /tn "%SVC_NAME%" >nul 2>nul
 if errorlevel 1 goto :finish
 call :msg ud_restarting
 echo [INFO] !M!
-call "%SCRIPT_DIR%server-service.cmd" stop /nopause >nul 2>nul
 call "%SCRIPT_DIR%server-service.cmd" start /nopause >nul 2>nul
 call :msg ud_restart_done
 echo [OK]    !M!
