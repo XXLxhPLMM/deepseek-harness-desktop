@@ -276,6 +276,20 @@ detect_platform() {
     echo "$os $arch"
 }
 
+# ---- 下载文件: 优先 curl, 回退 wget (精简 Linux/macOS 可能只有 wget) ----
+download_file() {
+    local url="$1" out="$2"
+    if command -v curl >/dev/null 2>&1; then
+        curl -L --fail --progress-bar -o "$out" "$url" && return 0
+    fi
+    if command -v wget >/dev/null 2>&1; then
+        # 提示: curl 不可用/失败，回退 wget 下载
+        warn "$(msg download_wget_fallback "$url")"
+        wget -O "$out" "$url" && return 0
+    fi
+    return 1
+}
+
 # ---- 下载并解压 ----
 install_node() {
     local os arch dist_url tmpfile
@@ -296,7 +310,7 @@ install_node() {
 
     # 提示: 下载 <url> ...
     info "$(msg downloading "$dist_url")"
-    if ! curl -L --fail --progress-bar -o "$tmpfile" "$dist_url"; then
+    if ! download_file "$dist_url" "$tmpfile"; then
         rm -f "$tmpfile"
         fail "$(msg download_fail "$dist_url")"   # 提示: 下载失败: <url>
         return 1

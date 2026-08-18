@@ -165,35 +165,8 @@ rem (run-dsh-web.cmd) that carries the real command. Non-debug mode calls `dsh
 rem web` from PATH (no absolute node paths); debug mode pins the script-dir
 rem nodejs. --patch is a dsh launcher flag and must come right after `web`,
 rem before the inner app flags (--port/--host).
-set "RUNNER=%SCRIPT_DIR%run-dsh-web.cmd"
-set "RUNNER_VBS=%SCRIPT_DIR%run-dsh-web.vbs"
-set "RUNNER_PS1=%SCRIPT_DIR%run-dsh-web.ps1"
->  "%RUNNER%" echo @echo off
->> "%RUNNER%" echo set "DSH_HOME=%USERPROFILE%\.dsh"
->> "%RUNNER%" echo set "USERPROFILE=%USERPROFILE%"
-if "%SERVICE_MODE%"=="1" (
-    if "%DEBUG_MODE%"=="1" (
-        >> "%RUNNER%" echo "%NODE_EXE%" "%DSH_CLI%" web --patch "%SCRIPT_DIR%service-directory-picker-browse.yml" --port %PORT% --host %HOST%
-    ) else (
-        >> "%RUNNER%" echo dsh web --patch "%SCRIPT_DIR%service-directory-picker-browse.yml" --port %PORT% --host %HOST%
-    )
-) else (
-    if "%DEBUG_MODE%"=="1" (
-        >> "%RUNNER%" echo "%NODE_EXE%" "%DSH_CLI%" web --port %PORT% --host %HOST%
-    ) else (
-        >> "%RUNNER%" echo dsh web --port %PORT% --host %HOST%
-    )
-)
-rem Interactive mode: launch via a hidden wscript wrapper so no cmd window pops
-rem up in the user's session. The VBS body is written at top level because its
-rem parentheses would otherwise break a cmd if-block. The second echo line must
-rem keep the doubled quotes (VBS string escaping).
->  "%RUNNER_VBS%" echo Set sh = CreateObject("WScript.Shell")
->> "%RUNNER_VBS%" echo sh.Run "cmd /c ""%RUNNER%""", 0, True
-rem Fallback for machines where the VBScript feature is not installed (it is an
-rem on-demand feature since Windows 11 24H2): a hidden PowerShell launcher that
-rem Start-Processes the wrapper with -WindowStyle Hidden and waits.
->  "%RUNNER_PS1%" echo Start-Process -FilePath "%RUNNER%" -WindowStyle Hidden -Wait
+call :gen_launchers
+if errorlevel 1 goto :finish
 rem Probe VBScript availability; result in VBS_OK.
 set "VBS_OK="
 >  "%TEMP%\dsh_vbs_probe.vbs" echo WScript.Echo "OK"
@@ -268,6 +241,18 @@ if errorlevel 1 (
     set "EXIT_CODE=1"
     goto :finish
 )
+rem Derive the installed mode from the task itself, then make sure the runtime
+rem launcher trio exists (normally created at install; regenerate if lost so the
+rem task does not fail on a missing file).
+call :get_task_mode
+set "DEBUG_MODE=0"
+set "RUNNER=%SCRIPT_DIR%run-dsh-web.cmd"
+set "RUNNER_VBS=%SCRIPT_DIR%run-dsh-web.vbs"
+set "RUNNER_PS1=%SCRIPT_DIR%run-dsh-web.ps1"
+if exist "%RUNNER%" if exist "%RUNNER_VBS%" if exist "%RUNNER_PS1%" goto :start_launchers_ok
+call :gen_launchers
+if errorlevel 1 goto :finish
+:start_launchers_ok
 call :msg srvc_starting
 echo [INFO] !M!
 schtasks /run /tn "%SVC_NAME%" >nul 2>nul
@@ -384,6 +369,57 @@ rem interactive mode); the hidden cmd -> node chain would be orphaned and keep
 rem serving, so kill the dsh web node explicitly (the wrapper cmd then exits).
 :kill_dsh_web
 powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -like '*@deepseek-ai*' -and $_.CommandLine -like '*web --port*' } | ForEach-Object { taskkill /F /T /PID $_.ProcessId }" >nul 2>nul
+exit /b 0
+
+rem ---- task mode: errorlevel 0=SYSTEM(service), 1=interactive ----
+:get_task_mode
+powershell -NoProfile -Command "$t=Get-ScheduledTask -TaskName '%SVC_NAME%' -ErrorAction SilentlyContinue; if(-not $t){exit 2}; if($t.Principal.UserId -match 'SYSTEM'){exit 0}else{exit 1}" >nul 2>nul
+if errorlevel 1 (
+    set "SERVICE_MODE=0"
+) else (
+    set "SERVICE_MODE=1"
+)
+exit /b 0
+
+rem ---- generate the runtime launcher trio (run-dsh-web.cmd/.vbs/.ps1) ----
+rem No absolute paths are baked in where the wrapper can self-locate at runtime:
+rem interactive mode runs as the logged-in user, so DSH_HOME/USERPROFILE already
+rem resolve to that user's profile (no override needed); the --patch overlay
+rem self-locates via %%~dp0 (the wrapper's own directory). Service (SYSTEM) mode
+rem must override USERPROFILE to the installing user so dsh uses the real user's
+rem .dsh, and also self-locates the patch overlay the same way.
+rem Reads SERVICE_MODE/DEBUG_MODE/PORT/HOST/USERPROFILE/NODE_EXE/DSH_CLI;
+rem sets RUNNER/RUNNER_VBS/RUNNER_PS1 for the caller (install builds the task
+rem /tr from them; start just needs the files on disk).
+:gen_launchers
+set "RUNNER=%SCRIPT_DIR%run-dsh-web.cmd"
+set "RUNNER_VBS=%SCRIPT_DIR%run-dsh-web.vbs"
+set "RUNNER_PS1=%SCRIPT_DIR%run-dsh-web.ps1"
+>  "%RUNNER%" echo @echo off
+if "%SERVICE_MODE%"=="1" (
+    >> "%RUNNER%" echo set "DSH_HOME=%USERPROFILE%\.dsh"
+    >> "%RUNNER%" echo set "USERPROFILE=%USERPROFILE%"
+    if "%DEBUG_MODE%"=="1" (
+        >> "%RUNNER%" echo "%NODE_EXE%" "%DSH_CLI%" web --patch "%%~dp0service-directory-picker-browse.yml" --port %PORT% --host %HOST%
+    ) else (
+        >> "%RUNNER%" echo dsh web --patch "%%~dp0service-directory-picker-browse.yml" --port %PORT% --host %HOST%
+    )
+) else (
+    if "%DEBUG_MODE%"=="1" (
+        >> "%RUNNER%" echo "%NODE_EXE%" "%DSH_CLI%" web --port %PORT% --host %HOST%
+    ) else (
+        >> "%RUNNER%" echo dsh web --port %PORT% --host %HOST%
+    )
+)
+rem VBS launcher self-locates its own directory via WScript.ScriptFullName; the
+rem caret-escaped ampersands keep cmd echo printing them literally into the file.
+>  "%RUNNER_VBS%" echo Set fso = CreateObject("Scripting.FileSystemObject")
+>> "%RUNNER_VBS%" echo Set sh = CreateObject("WScript.Shell")
+>> "%RUNNER_VBS%" echo dir = fso.GetParentFolderName(WScript.ScriptFullName)
+>> "%RUNNER_VBS%" echo sh.Run "cmd /c """ ^& dir ^& "\run-dsh-web.cmd""", 0, True
+rem PowerShell fallback launcher self-locates via $PSScriptRoot.
+>  "%RUNNER_PS1%" echo $runner = Join-Path $PSScriptRoot "run-dsh-web.cmd"
+>> "%RUNNER_PS1%" echo Start-Process -FilePath $runner -WindowStyle Hidden -Wait
 exit /b 0
 
 :show_help

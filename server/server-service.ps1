@@ -220,6 +220,51 @@ function Stop-DshWebProcess {
 }
 
 # ---------- 子命令 ----------
+# Generate the runtime launcher trio (run-dsh-web.cmd/.vbs/.ps1) per the current
+# mode ($Script:ServiceMode / $Script:Debug). Sets $Script:Runner* so the caller
+# can build the task /tr. No absolute paths are baked in where the wrapper can
+# self-locate at runtime: interactive mode runs as the logged-in user, so
+# DSH_HOME/USERPROFILE already resolve to that user's profile (no override
+# needed); the --patch overlay self-locates via %~dp0 (the wrapper's own
+# directory). Service (SYSTEM) mode must override USERPROFILE to the installing
+# user so dsh uses the real user's .dsh, and also self-locates the patch overlay.
+function Generate-Launchers {
+    $Script:Runner    = Join-Path $Script:ScriptDir "run-dsh-web.cmd"
+    $Script:RunnerVbs = Join-Path $Script:ScriptDir "run-dsh-web.vbs"
+    $Script:RunnerPs1 = Join-Path $Script:ScriptDir "run-dsh-web.ps1"
+    if ($Script:ServiceMode) {
+        $webCmd = "set `"DSH_HOME=$env:USERPROFILE\.dsh`"`nset `"USERPROFILE=$env:USERPROFILE`""
+        if ($Script:Debug) {
+            $webCmd += "`n`"$($Script:NodePath)`" `"$($Script:DshCli)`" web --patch `"%~dp0service-directory-picker-browse.yml`" --port $($Script:Port) --host $($Script:BindHost)"
+        } else {
+            $webCmd += "`ndsh web --patch `"%~dp0service-directory-picker-browse.yml`" --port $($Script:Port) --host $($Script:BindHost)"
+        }
+    } else {
+        if ($Script:Debug) {
+            $webCmd = "`"$($Script:NodePath)`" `"$($Script:DshCli)`" web --port $($Script:Port) --host $($Script:BindHost)"
+        } else {
+            $webCmd = "dsh web --port $($Script:Port) --host $($Script:BindHost)"
+        }
+    }
+    $lines = @(
+        "@echo off",
+        $webCmd
+    )
+    Set-Content -LiteralPath $Script:Runner -Value $lines -Encoding ASCII
+    $vbsLines = @(
+        'Set fso = CreateObject("Scripting.FileSystemObject")',
+        'Set sh = CreateObject("WScript.Shell")',
+        'dir = fso.GetParentFolderName(WScript.ScriptFullName)',
+        'sh.Run "cmd /c """ & dir & "\run-dsh-web.cmd""", 0, True'
+    )
+    Set-Content -LiteralPath $Script:RunnerVbs -Value $vbsLines -Encoding ASCII
+    $ps1Lines = @(
+        '$runner = Join-Path $PSScriptRoot "run-dsh-web.cmd"',
+        'Start-Process -FilePath $runner -WindowStyle Hidden -Wait'
+    )
+    Set-Content -LiteralPath $Script:RunnerPs1 -Value $ps1Lines -Encoding ASCII
+}
+
 function Install-Service {
     Resolve-Runtime
     if (Get-SvcExists) {
@@ -240,44 +285,15 @@ function Install-Service {
     # (run-dsh-web.cmd) that carries the real command. Non-debug mode calls `dsh
     # web` from PATH; debug mode pins the script-dir nodejs. --patch is a dsh
     # launcher flag and must come right after `web`, before the inner app flags.
-    $overlay = Join-Path $Script:ScriptDir "service-directory-picker-browse.yml"
-    $runner  = Join-Path $Script:ScriptDir "run-dsh-web.cmd"
+Generate-Launchers
     if ($Script:ServiceMode) {
-        if ($Script:Debug) {
-            $webCmd = "`"$($Script:NodePath)`" `"$($Script:DshCli)`" web --patch `"$overlay`" --port $($Script:Port) --host $($Script:BindHost)"
-        } else {
-            $webCmd = "dsh web --patch `"$overlay`" --port $($Script:Port) --host $($Script:BindHost)"
-        }
-    } else {
-        if ($Script:Debug) {
-            $webCmd = "`"$($Script:NodePath)`" `"$($Script:DshCli)`" web --port $($Script:Port) --host $($Script:BindHost)"
-        } else {
-            $webCmd = "dsh web --port $($Script:Port) --host $($Script:BindHost)"
-        }
-    }
-    $lines = @(
-        "@echo off",
-        "set `"DSH_HOME=$env:USERPROFILE\.dsh`"",
-        "set `"USERPROFILE=$env:USERPROFILE`"",
-        $webCmd
-    )
-    Set-Content -LiteralPath $runner -Value $lines -Encoding ASCII
-    if ($Script:ServiceMode) {
-        $taskCmd = "cmd /c \`"\`"$runner\`"\`""
+        $taskCmd = "cmd /c \`"\`"$($Script:Runner)\`"\`""
         schtasks.exe /create /tn $Script:SvcName /tr $taskCmd /sc onstart /ru SYSTEM /rl highest /f
     } else {
         # Interactive mode: launch via a hidden wscript wrapper so no cmd window
         # pops up in the user's session. VBScript is an on-demand feature since
         # Windows 11 24H2, so probe it and fall back to a hidden PowerShell
         # launcher when the feature is not installed.
-        $runnerVbs = Join-Path $Script:ScriptDir "run-dsh-web.vbs"
-        $vbsLines = @(
-            "Set sh = CreateObject(`"WScript.Shell`")",
-            "sh.Run `"cmd /c `"`"$runner`"`"`"`, 0, True"
-        )
-        Set-Content -LiteralPath $runnerVbs -Value $vbsLines -Encoding ASCII
-        $runnerPs1 = Join-Path $Script:ScriptDir "run-dsh-web.ps1"
-        Set-Content -LiteralPath $runnerPs1 -Value "Start-Process -FilePath `"$runner`" -WindowStyle Hidden -Wait" -Encoding ASCII
         $probeVbs = Join-Path $env:TEMP "dsh_vbs_probe.vbs"
         Set-Content -LiteralPath $probeVbs -Value 'WScript.Echo "OK"' -Encoding ASCII
         $vbOk = $false
@@ -287,9 +303,9 @@ function Install-Service {
         } catch { $vbOk = $false }
         Remove-Item -LiteralPath $probeVbs -Force -ErrorAction SilentlyContinue
         if ($vbOk) {
-            $taskCmd = "wscript.exe \`"$runnerVbs\`""
+            $taskCmd = "wscript.exe \`"$($Script:RunnerVbs)\`""
         } else {
-            $taskCmd = "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \`"$runnerPs1\`""
+            $taskCmd = "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \`"$($Script:RunnerPs1)\`""
         }
         schtasks.exe /create /tn $Script:SvcName /tr $taskCmd /sc onstart /ru $env:USERNAME /it /rl highest /f
     }
@@ -318,6 +334,20 @@ function Show-Status {
 
 function Start-ServiceX {
     if (-not (Get-SvcExists)) { Write-Fail (msg srvc_not_installed); exit 1 }
+    # Derive the installed mode from the task itself, then make sure the runtime
+    # launcher trio exists (normally created at install; regenerate if lost so the
+    # task does not fail on a missing file).
+    $t = Get-ScheduledTask -TaskName $Script:SvcName
+    $Script:ServiceMode = ($t.Principal.UserId -match "SYSTEM")
+    $Script:Debug = $false
+    $launchers = @(
+        (Join-Path $Script:ScriptDir "run-dsh-web.cmd"),
+        (Join-Path $Script:ScriptDir "run-dsh-web.vbs"),
+        (Join-Path $Script:ScriptDir "run-dsh-web.ps1")
+    )
+    if (($launchers | Where-Object { -not (Test-Path -LiteralPath $_) }).Count -gt 0) {
+        Generate-Launchers
+    }
     Write-Info (msg srvc_starting)
     schtasks.exe /run /tn $Script:SvcName | Out-Null
     for ($i = 0; $i -lt 10; $i++) {
