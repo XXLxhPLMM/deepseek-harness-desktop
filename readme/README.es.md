@@ -160,8 +160,8 @@ Los envoltorios pasan los argumentos directamente:
 Por ejemplo:
 
 ```bat
-install-server-service.cmd --port 8080
-bash install-server-service.sh
+server\install-server-service.cmd --port 8080
+bash server/install-server-service.sh
 ```
 
 > `install` / `uninstall` en Windows requiere privilegios de administrador; Linux / macOS requieren root / sudo.

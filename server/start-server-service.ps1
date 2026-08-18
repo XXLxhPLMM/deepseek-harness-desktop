@@ -15,9 +15,13 @@ foreach ($a in $args) {
 }
 
 if ($isHelp) {
+    $LASTEXITCODE = 0
     & $Target -Help
-    exit $LASTEXITCODE
+    if ($LASTEXITCODE) { exit $LASTEXITCODE }
+    exit 0
 }
 
+$LASTEXITCODE = 0
 & $Target start
-exit $LASTEXITCODE
+if ($LASTEXITCODE) { exit $LASTEXITCODE }
+exit 0

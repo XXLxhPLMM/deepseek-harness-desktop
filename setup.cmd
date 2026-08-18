@@ -28,7 +28,7 @@ rem ---- language detection (load FIRST, default zh; zh-TW for Traditional) ----
 rem Runs before chcp: chcp 65001 makes CurrentUICulture fall back to en-US, so use
 rem InstalledUICulture (system UI language). SETUP_LANG env var overrides detection
 rem (for testing / forcing a language).
-rem NOTE: NEVER write "if(" (if directly followed by an open paren) anywhere in this
+rem NOTE: never use a compact if-parenthesis form anywhere in this
 rem file, even inside a quoted PowerShell string: cmd mis-parses it as a block open
 rem and corrupts goto/call label lookup later in the script. Always keep a space.
 set "LANG=zh"
@@ -126,7 +126,10 @@ if errorlevel 1 (
     goto :finish
 )
 
-rem ---- level 2.5: npm taobao mirror + global nrm (node must be ready) ----
+rem ---- level 2.5: migrate user-level node/nvm dirs to system PATH (admin only) ----
+call :promote_node_path
+
+rem ---- level 2.6: npm taobao mirror + global nrm (node must be ready) ----
 call :ensure_npm_mirror
 
 rem ---- level 3: dsh (skip if already ok) ----
@@ -151,6 +154,12 @@ if "%NODE_INSTALLED%"=="1" (
         echo [WARN] !M!
         goto :done
     )
+    if "%NODE_METHOD%"=="nvm" (
+        rem node installed via nvm: nvm manages PATH, INSTALL_DIR was never created
+        call :msg env_nvm_skip
+        echo [INFO] !M!
+        goto :done
+    )
     call :configure_env
 )
 
@@ -166,12 +175,13 @@ if defined CUR_VER (
     call :msg node_version "unknown"
     echo [INFO] !M!
 )
+goto :finish
 
 rem ============================================================================
 rem  Subroutines (called from main flow before :finish)
 rem ============================================================================
 
-rem ---- configure PATH (user + current session) ----
+rem ---- configure PATH (system + current session, requires admin) ----
 :configure_env
 if "%DRY_RUN%"=="1" (
     call :msg dryrun_skip
@@ -180,11 +190,15 @@ if "%DRY_RUN%"=="1" (
 )
 call :msg env_writing
 echo [INFO] !M!
-rem Write the Windows user PATH (HKCU\Environment) via reg instead of setx:
-rem setx has a 1024-char limit and silently fails on real-world long PATHs,
-rem leaving the env var unwritten. Pure cmd, no PowerShell dependency.
+rem System PATH write requires administrator rights. Without them, warn and only
+rem update the current session (node/dsh still usable in this terminal).
+net session >nul 2>nul
+if errorlevel 1 goto :no_admin
+rem Write the Windows system PATH (HKLM\...\Session Manager\Environment) via reg
+rem instead of setx: setx has a 1024-char limit and silently fails on real-world
+rem long PATHs, leaving the env var unwritten. Pure cmd, no PowerShell dependency.
 set "REG_PATH_FILE=%TEMP%\sn_path.txt"
-reg query "HKCU\Environment" /v Path > "%REG_PATH_FILE%" 2>nul
+reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path > "%REG_PATH_FILE%" 2>nul
 set "CURTYPE="
 set "CURPATH="
 if exist "%REG_PATH_FILE%" (
@@ -206,7 +220,7 @@ if defined CURPATH (
         call :msg winpath_already "%INSTALL_DIR%"
         echo [INFO] !M!
     ) else (
-        reg add "HKCU\Environment" /v Path /t !CURTYPE! /d "%INSTALL_DIR%;!CURPATH!" /f >nul 2>nul
+        reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path /t !CURTYPE! /d "%INSTALL_DIR%;!CURPATH!" /f >nul 2>nul
         if errorlevel 1 (
             call :msg winpath_fail "%INSTALL_DIR%"
             echo [WARN] !M!
@@ -217,7 +231,7 @@ if defined CURPATH (
         )
     )
 ) else (
-    reg add "HKCU\Environment" /v Path /t !CURTYPE! /d "%INSTALL_DIR%" /f >nul 2>nul
+    reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path /t !CURTYPE! /d "%INSTALL_DIR%" /f >nul 2>nul
     if errorlevel 1 (
         call :msg winpath_fail "%INSTALL_DIR%"
         echo [WARN] !M!
@@ -229,18 +243,125 @@ if defined CURPATH (
 )
 set "PATH=%INSTALL_DIR%;%PATH%"
 rem Notify running processes (Explorer) so newly opened terminals pick up the
-rem updated user PATH without waiting for the next sign-in.
+rem updated system PATH without waiting for the next sign-in.
 if defined BCAST call :broadcast_env
 call :msg env_session_ok "%INSTALL_DIR%;%PATH%"
 echo [OK]    !M!
 exit /b 0
 
-rem ---- broadcast WM_SETTINGCHANGE("Environment") after the user PATH change ----
-rem reg.exe writes HKCU\Environment but never notifies running processes, so
-rem Explorer keeps the old environment and every newly opened terminal (a child
-rem of Explorer) inherits the stale PATH until the next sign-in - exactly the
-rem "works only in the current session" symptom. PowerShell's
-rem SetEnvironmentVariable broadcasts automatically; replicate that here.
+:no_admin
+call :msg env_no_admin "%INSTALL_DIR%"
+echo [WARN] !M!
+call :msg noenv_manual "%INSTALL_DIR%"
+echo [INFO] !M!
+set "PATH=%INSTALL_DIR%;%PATH%"
+call :msg env_session_ok "%INSTALL_DIR%;%PATH%"
+echo [OK]    !M!
+exit /b 0
+
+rem ---- migrate user-level node/nvm dirs into the system PATH (admin only) ----
+rem If node/nvm live only in the user PATH, the SYSTEM account cannot see them
+rem and the dsh web service (run as SYSTEM) cannot start. When running with
+rem admin rights in a normal (non-debug, non-dry-run, no --no-env) run, move
+rem those dirs from the user PATH into the system PATH and drop them from the
+rem user PATH. Pure cmd, no PowerShell dependency.
+:promote_node_path
+if "%DEBUG_MODE%"=="1" exit /b 0
+if "%DRY_RUN%"=="1" exit /b 0
+if "%DO_ENV%"=="0" exit /b 0
+net session >nul 2>nul
+if errorlevel 1 exit /b 0
+set "REG_PATH_FILE=%TEMP%\sn_promote.txt"
+reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path > "%REG_PATH_FILE%" 2>nul
+set "MACHINE_PATH="
+set "MACHINE_TYPE=REG_EXPAND_SZ"
+if exist "%REG_PATH_FILE%" (
+    for /f "usebackq skip=2 tokens=1,2,*" %%a in ("%REG_PATH_FILE%") do (
+        set "MACHINE_TYPE=%%b"
+        set "MACHINE_PATH=%%c"
+    )
+)
+del /f /q "%REG_PATH_FILE%" >nul 2>nul
+reg query "HKCU\Environment" /v Path > "%REG_PATH_FILE%" 2>nul
+set "USER_PATH="
+set "USER_TYPE=REG_EXPAND_SZ"
+if exist "%REG_PATH_FILE%" (
+    for /f "usebackq skip=2 tokens=1,2,*" %%a in ("%REG_PATH_FILE%") do (
+        set "USER_TYPE=%%b"
+        set "USER_PATH=%%c"
+    )
+)
+del /f /q "%REG_PATH_FILE%" >nul 2>nul
+if defined MACHINE_PATH set "MACHINE_PATH=!MACHINE_PATH:"=!"
+if defined USER_PATH set "USER_PATH=!USER_PATH:"=!"
+if not defined USER_PATH exit /b 0
+for %%c in (node nvm) do (
+    set "PROG="
+    for /f "usebackq delims=" %%v in (`where %%c 2^>nul`) do if not defined PROG set "PROG=%%v"
+    if defined PROG (
+        for %%I in ("!PROG!") do set "PROG_DIR=%%~dpI"
+        call :promote_one_dir "!PROG_DIR!"
+    )
+)
+exit /b 0
+
+:promote_one_dir
+set "D=%~1"
+if "%D%"=="" exit /b 0
+if "!D:~-1!"=="\" set "D=!D:~0,-1!"
+rem already in the system PATH?
+set "CHECK=!MACHINE_PATH:%D%=!"
+if not "!CHECK!"=="!MACHINE_PATH!" (
+    rem system has it: drop the duplicate from the user PATH if present
+    set "CHECK=!USER_PATH:%D%=!"
+    if not "!CHECK!"=="!USER_PATH!" (
+        set "USER_PATH=!USER_PATH:%D%;=!"
+        set "USER_PATH=!USER_PATH:;%D%=!"
+        set "USER_PATH=!USER_PATH:%D%=!"
+        if "!USER_PATH!"=="" (
+            reg delete "HKCU\Environment" /v Path /f >nul 2>nul
+        ) else (
+            reg add "HKCU\Environment" /v Path /t !USER_TYPE! /d "!USER_PATH!" /f >nul 2>nul
+        )
+        call :broadcast_env
+        call :msg env_promote_clean "%D%"
+        echo [INFO] !M!
+    )
+    exit /b 0
+)
+rem only in the user PATH: move it into the system PATH
+set "CHECK=!USER_PATH:%D%=!"
+if not "!CHECK!"=="!USER_PATH!" (
+    set "NM=!D!;!MACHINE_PATH!"
+    if "!NM!"=="!D!;" set "NM=!D!"
+    reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path /t !MACHINE_TYPE! /d "!NM!" /f >nul 2>nul
+    if errorlevel 1 (
+        call :msg env_promote_fail "%D%"
+        echo [WARN] !M!
+        exit /b 0
+    )
+    set "MACHINE_PATH=!NM!"
+    set "USER_PATH=!USER_PATH:%D%;=!"
+    set "USER_PATH=!USER_PATH:;%D%=!"
+    set "USER_PATH=!USER_PATH:%D%=!"
+    if "!USER_PATH!"=="" (
+        reg delete "HKCU\Environment" /v Path /f >nul 2>nul
+    ) else (
+        reg add "HKCU\Environment" /v Path /t !USER_TYPE! /d "!USER_PATH!" /f >nul 2>nul
+    )
+    call :broadcast_env
+    call :msg env_promoted "%D%"
+    echo [OK]    !M!
+)
+exit /b 0
+
+rem ---- broadcast WM_SETTINGCHANGE("Environment") after the PATH change ----
+rem reg.exe writes the system PATH (HKLM\...\Session Manager\Environment) but
+rem never notifies running processes, so Explorer keeps the old environment and
+rem every newly opened terminal (a child of Explorer) inherits the stale PATH
+rem until the next sign-in - exactly the "works only in the current session"
+rem symptom. PowerShell's SetEnvironmentVariable broadcasts automatically;
+rem replicate that here.
 rem Best effort only: stay silent when powershell is unavailable, the PATH
 rem change then simply applies at the next logon.
 :broadcast_env
@@ -275,6 +396,7 @@ rem ---- ensure node is ready: errorlevel 0=ok, 1=failed ----
 rem Sets NODE_INSTALLED=1 when it actually installs a fresh node.
 :ensure_node
 set "NODE_INSTALLED=0"
+set "NODE_METHOD=direct"
 call :detect_node
 if not errorlevel 1 exit /b 0
 if "%DRY_RUN%"=="1" (
@@ -302,6 +424,7 @@ if not errorlevel 1 (
     call :nvm_install
     if not errorlevel 1 (
         set "NODE_DONE=1"
+        set "NODE_METHOD=nvm"
         goto :node_installed
     )
     call :msg nvm_fail_fallback
@@ -527,15 +650,23 @@ rem run npm in a child cmd: npm.cmd's internal goto would corrupt the parent
 rem batch's label tracking when invoked from a call :label subroutine
 cmd /c npm install -g "%DSH_PKG%"
 if errorlevel 1 goto :dsh_fail
-rem refresh PATH if npm global dir is not on it yet
+ rem refresh PATH if npm global dir is not on it yet
 set "DSH_FOUND="
 where dsh >nul 2>nul && set "DSH_FOUND=1"
 if not defined DSH_FOUND if exist "%APPDATA%\npm\dsh.cmd" (
     set "PATH=%APPDATA%\npm;%PATH%"
     set "DSH_FOUND=1"
 )
-if not defined DSH_FOUND if exist "%SCRIPT_DIR%nodejs\dsh.cmd" (
-    set "PATH=%SCRIPT_DIR%nodejs;%PATH%"
+if not defined DSH_FOUND (
+    set "DSH_PREFIX="
+    for /f "usebackq delims=" %%p in (`cmd /c npm prefix -g 2^>nul`) do if not defined DSH_PREFIX set "DSH_PREFIX=%%p"
+    if defined DSH_PREFIX if exist "!DSH_PREFIX!\dsh.cmd" (
+        set "PATH=!DSH_PREFIX!;!PATH!"
+        set "DSH_FOUND=1"
+    )
+)
+if not defined DSH_FOUND if exist "%INSTALL_DIR%\dsh.cmd" (
+    set "PATH=%INSTALL_DIR%;%PATH%"
     set "DSH_FOUND=1"
 )
 if not defined DSH_FOUND goto :dsh_fail
@@ -579,7 +710,7 @@ if "%DRY_RUN%"=="1" (
         call :msg dryrun_skip
         echo [INFO] !M!
     )
-    exit /b 0
+    exit /b 1
 )
 
 if "%DEBUG_MODE%"=="1" (
@@ -673,7 +804,12 @@ rem current cmd session): endlocal & set the key vars with the inner values.
 rem %KEEP_*% expand during line parse (before endlocal) so they carry the
 rem inner values; npm_config_* only exist in debug mode.
 set "KEEP_PATH=%PATH%"
+if "%DEBUG_MODE%"=="1" (
+    goto :finish_debug
+)
+endlocal & exit /b %EXIT_CODE%
+
+:finish_debug
 set "KEEP_REG=%npm_config_registry%"
 set "KEEP_PFX=%npm_config_prefix%"
-endlocal & set "PATH=%KEEP_PATH%" & set "npm_config_registry=%KEEP_REG%" & set "npm_config_prefix=%KEEP_PFX%"
-exit /b %EXIT_CODE%
+endlocal & set "PATH=%KEEP_PATH%" & set "npm_config_registry=%KEEP_REG%" & set "npm_config_prefix=%KEEP_PFX%" & exit /b %EXIT_CODE%

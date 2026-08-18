@@ -128,11 +128,12 @@ info "$(msg ud_title)"
 
 # ---------- 定位 dsh: debug 模式只认脚本目录 node 的全局 dsh ----------
 if [[ "$DEBUG_MODE" -eq 1 ]]; then
-    if [[ ! -x "$ROOT_DIR/nodejs/dsh" && ! -x "$ROOT_DIR/nodejs/dsh.cmd" ]]; then
+    # POSIX npm 全局 bin 在 nodejs/bin, win32 布局在 nodejs/ 下 (dsh / dsh.cmd)
+    if [[ ! -x "$ROOT_DIR/nodejs/dsh" && ! -x "$ROOT_DIR/nodejs/dsh.cmd" && ! -x "$ROOT_DIR/nodejs/bin/dsh" ]]; then
         fail "$(msg ud_no_dsh)"
         exit 1
     fi
-    export PATH="$ROOT_DIR/nodejs:$PATH"
+    export PATH="$ROOT_DIR/nodejs/bin:$ROOT_DIR/nodejs:$PATH"
     export npm_config_prefix="$ROOT_DIR/nodejs"
 else
     if ! command -v dsh >/dev/null 2>&1; then

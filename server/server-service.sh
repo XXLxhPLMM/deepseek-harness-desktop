@@ -141,7 +141,7 @@ usage() {
     echo "  $(msg srvc_usage_host)"
     echo "$(msg srvc_usage_debug)"
     echo "$(msg srvc_usage_help)"
-    exit 0
+    return 0
 }
 
 while [[ $# -gt 0 ]]; do
@@ -151,13 +151,14 @@ while [[ $# -gt 0 ]]; do
         --port)   PORT="${2:-$DEFAULT_PORT}"; shift 2 ;;
         --host)   HOST="${2:-127.0.0.1}"; shift 2 ;;
         --debug)  DEBUG_MODE=1; shift ;;
-        --help|-h) usage ./server-service.sh ;;
-        *) fail "$(msg srvc_unknown_action "$1")"; usage ./server-service.sh ;;
+        --help|-h) usage ./server-service.sh; exit 0 ;;
+        *) fail "$(msg srvc_unknown_action "$1")"; usage ./server-service.sh 1; exit 1 ;;
     esac
 done
 if [[ -z "$ACTION" ]]; then
     fail "$(msg srvc_unknown_action "")"
-    usage ./server-service.sh
+    usage ./server-service.sh 1
+    exit 1
 fi
 
 # ---------- 解析 node 与 dsh cli 的绝对路径 (服务运行在干净环境下, 依赖 PATH 不可靠) ----------
@@ -171,19 +172,36 @@ resolve_runtime() {
         elif [[ -x "$node_dir/node" ]]; then
             NODE_PATH="$node_dir/node"
         fi
-        # 调试模式 dsh 装到 ROOT_DIR (npm --prefix ROOT_DIR)
-        local cand
-        cand="$ROOT_DIR/node_modules/@deepseek-ai/dsh"
-        if [[ -f "$cand/package.json" ]]; then
-            DSH_CLI="$("$NODE_PATH" -e "const p=require('$cand/package.json'); const b=p.bin&&p.bin.dsh||p.bin; process.stdout.write(require('path').join('$cand', typeof b==='string'?b:b.dsh))" 2>/dev/null || echo "")"
-        fi
+        # 调试模式: setup --debug 用 npm_config_prefix=nodejs 安装 dsh,
+        # POSIX npm 全局模块在 nodejs/lib/node_modules, win32 布局在 nodejs/node_modules。
+        local cand cli
+        for cand in "$node_dir/lib/node_modules/@deepseek-ai/dsh" "$node_dir/node_modules/@deepseek-ai/dsh"; do
+            [[ -f "$cand/package.json" ]] || continue
+            cli="$("$NODE_PATH" -e "const p=require('$cand/package.json'); const b=p.bin&&p.bin.dsh||p.bin; process.stdout.write(require('path').join('$cand', typeof b==='string'?b:b.dsh))" 2>/dev/null || true)"
+            if [[ -n "$cli" && -f "$cli" ]]; then DSH_CLI="$cli"; break; fi
+        done
     else
-        if command -v node >/dev/null 2>&1; then
+        local runtime_user="${SUDO_USER:-}"
+        if [[ -n "$runtime_user" && "$(id -u)" -eq 0 && -x "$(command -v sudo 2>/dev/null || true)" ]]; then
+            NODE_PATH="$(sudo -iu "$runtime_user" bash -lc 'command -v node' 2>/dev/null || true)"
+        elif command -v node >/dev/null 2>&1; then
             NODE_PATH="$(command -v node)"
         fi
-        if command -v npm >/dev/null 2>&1; then
+        if [[ -n "$runtime_user" && "$(id -u)" -eq 0 && -x "$(command -v sudo 2>/dev/null || true)" ]]; then
+            local user_npm_root
+            user_npm_root="$(sudo -iu "$runtime_user" bash -lc 'npm root -g' 2>/dev/null || true)"
+            if [[ -n "$user_npm_root" ]]; then
+                local root="$user_npm_root" pj binval
+            else
+                local root="" pj binval
+            fi
+        elif command -v npm >/dev/null 2>&1; then
             local root pj binval
             root="$(npm root -g 2>/dev/null || true)"
+        else
+            local root="" pj binval
+        fi
+        if [[ -n "$root" ]]; then
             pj="$root/@deepseek-ai/dsh/package.json"
             if [[ -f "$pj" ]]; then
                 binval="$("$NODE_PATH" -e "const p=require('$pj'); const b=p.bin&&p.bin.dsh||p.bin; process.stdout.write(require('path').join('$root/@deepseek-ai/dsh', typeof b==='string'?b:(b&&b.dsh)||''))" 2>/dev/null || echo "")"
@@ -216,11 +234,16 @@ svc_active() {
 # ---------- systemd: 安装 ----------
 install_systemd() {
     resolve_runtime
+    local service_home="$HOME"
+    if [[ -n "${SUDO_USER:-}" ]] && command -v getent >/dev/null 2>&1; then
+        service_home="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
+    fi
     if svc_installed; then
         info "$(msg srvc_exists "$SVC_NAME")"
     else
         info "$(msg srvc_install "$PORT")"
-        cat > "$SVC_UNIT" <<EOF
+    fi
+    cat > "$SVC_UNIT" <<EOF
 [Unit]
 Description=DeepSeek Harness Web (dsh web)
 After=network.target
@@ -229,8 +252,8 @@ After=network.target
 Type=simple
 # 服务固定使用注册用户的 dsh 数据根 (~/.dsh), 避免以 root/SYSTEM 运行
 # 时 homedir 不同导致看不到用户会话
-Environment="DSH_HOME=$HOME/.dsh"
-ExecStart=$NODE_PATH "$DSH_CLI" web --port "$PORT" --host "$HOST"
+Environment="DSH_HOME=$service_home/.dsh"
+ExecStart="$NODE_PATH" "$DSH_CLI" web --port "$PORT" --host "$HOST"
 Restart=always
 RestartSec=3
 # 继承运行环境, 让 dsh 能找到 DSH_HOME 等
@@ -239,9 +262,8 @@ EnvironmentFile=-/etc/environment
 [Install]
 WantedBy=multi-user.target
 EOF
-        systemctl daemon-reload
-        systemctl enable --now "$SVC_NAME"
-    fi
+    systemctl daemon-reload
+    systemctl enable --now "$SVC_NAME"
     systemctl restart "$SVC_NAME"
     systemctl --no-pager status "$SVC_NAME" 2>&1 | head -n 8
     ok "$(msg srvc_installed "$SVC_NAME")"

@@ -1,9 +1,15 @@
 ﻿# server-service.ps1
 # 把 deepseek harness 的 `dsh web` 安装/管理为开机自启任务（开机自动启动）。
-# 采用 计划任务 (schtasks) + node.exe 直连 的方式: 任务命令为
-# <node.exe> <dsh cli.js> web --port <port> --host <host>。
+# 采用 计划任务 (schtasks) + 运行包装脚本 (run-dsh-web.cmd) 的方式，任务命令
+# 很短（cmd /c 包装脚本），真实命令在包装脚本里；非 debug 模式直接调用 PATH
+# 中的 `dsh web`，debug 模式才用脚本目录 nodejs 的绝对路径：
+#     dsh web [--patch <overlay>] --port <port> --host <host>
+# 默认（不带 --service）注册为交互任务 (/it)，经 wscript 隐藏启动（不弹 cmd
+# 窗口）在已登录用户会话里运行、原生文件夹弹窗可用；VBScript 不可用时（自
+# Windows 11 24H2 起为按需功能）自动回退为 PowerShell 隐藏启动。--service
+# 则注册为 SYSTEM 任务（未登录也开机自启，目录选择固定为网页内嵌浏览）。
 #
-# 任务名固定为 dsh-web。命令为 `<node.exe> <dsh cli.js> web --port <port> --host <host>`。
+# 任务名固定为 dsh-web。
 #
 # 用法:
 #   powershell -ExecutionPolicy Bypass -File server-service.ps1 install
@@ -14,6 +20,7 @@
 #   powershell -ExecutionPolicy Bypass -File server-service.ps1 --port 8080 install
 #   powershell -ExecutionPolicy Bypass -File server-service.ps1 --host 127.0.0.1 install
 #   powershell -ExecutionPolicy Bypass -File server-service.ps1 -Debug install
+#   powershell -ExecutionPolicy Bypass -File server-service.ps1 service install
 #
 # 注意: install/uninstall 需要管理员权限 (schtasks /create / /delete)。
 #
@@ -36,6 +43,7 @@ if ($env:DSH_PORT) {
 }
 $Script:BindHost    = "127.0.0.1"
 $Script:Debug       = $false
+$Script:ServiceMode = $false
 $Script:SvcName     = "dsh-web"
 
 # ---------- 语言检测 (与 setup.ps1 一致) ----------
@@ -105,6 +113,7 @@ function Show-Usage {
     Write-Host "  $((msg srvc_usage_port $Script:DefaultPort))"
     Write-Host "  $((msg srvc_usage_host))"
     Write-Host (msg srvc_usage_debug)
+    Write-Host (msg srvc_usage_service)
     Write-Host (msg srvc_usage_help)
     Write-Host (msg srvc_usage_nopause)
 }
@@ -123,6 +132,7 @@ for ($i = 0; $i -lt $args.Count; $i++) {
         "port"     { if ($i + 1 -lt $args.Count) { try { $Script:Port = [int]$args[$i + 1] } catch { }; $i++ } }
         "host"     { if ($i + 1 -lt $args.Count) { $Script:BindHost = $args[$i + 1]; $i++ } }
         "debug"    { $Script:Debug = $true }
+        "service"  { $Script:ServiceMode = $true }
         "help"     { Show-Usage; exit 0 }
         "nopause"  { }
         default    { Write-Host "[WARN] $(msg unknown_arg $a)" -ForegroundColor Yellow }
@@ -148,7 +158,7 @@ function Resolve-Runtime {
     if ($Script:Debug) {
         $cand = Join-Path $Script:RootDir "nodejs\node.exe"
         if (Test-Path $cand) { $Script:NodePath = $cand }
-        $dshPkg = Join-Path $Script:RootDir "node_modules\@deepseek-ai\dsh"
+        $dshPkg = Join-Path $Script:RootDir "nodejs\node_modules\@deepseek-ai\dsh"
         if (Test-Path (Join-Path $dshPkg "package.json")) {
             try {
                 $pj = Get-Content (Join-Path $dshPkg "package.json") -Raw | ConvertFrom-Json
@@ -161,9 +171,10 @@ function Resolve-Runtime {
     } else {
         $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
         if ($nodeCmd) { $Script:NodePath = $nodeCmd.Source }
-        if (Get-Command npm -ErrorAction SilentlyContinue) {
+        $npmCmd = Get-Command npm.cmd -ErrorAction SilentlyContinue
+        if ($npmCmd) {
             try {
-                $root = npm root -g 2>$null
+                $root = & npm.cmd root -g 2>$null
                 $pj = Join-Path $root "@deepseek-ai\dsh\package.json"
                 if (Test-Path $pj) {
                     $data = Get-Content $pj -Raw | ConvertFrom-Json
@@ -199,18 +210,110 @@ function Get-SvcRunning {
     } catch { return $false }
 }
 
+# schtasks /end 只结束任务主进程 (交互模式为 wscript.exe)，隐藏的 cmd -> node
+# 链会成孤儿继续运行，所以显式杀掉残留的 dsh web node (其包装 cmd 随之退出)。
+function Stop-DshWebProcess {
+    Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object {
+        $_.CommandLine -like '*@deepseek-ai*' -and $_.CommandLine -like '*web --port*'
+    } | ForEach-Object {
+        taskkill.exe /F /T /PID $_.ProcessId 2>$null | Out-Null
+    }
+}
+
 # ---------- 子命令 ----------
+# Generate the runtime launcher trio (run-dsh-web.cmd/.vbs/.ps1) per the current
+# mode ($Script:ServiceMode / $Script:Debug). Sets $Script:Runner* so the caller
+# can build the task /tr. No absolute paths are baked in where the wrapper can
+# self-locate at runtime: interactive mode runs as the logged-in user, so
+# DSH_HOME/USERPROFILE already resolve to that user's profile (no override
+# needed); the --patch overlay self-locates via %~dp0 (the wrapper's own
+# directory). Service (SYSTEM) mode must override USERPROFILE to the installing
+# user so dsh uses the real user's .dsh, and also self-locates the patch overlay.
+function Generate-Launchers {
+    $Script:Runner    = Join-Path $Script:ScriptDir "run-dsh-web.cmd"
+    $Script:RunnerVbs = Join-Path $Script:ScriptDir "run-dsh-web.vbs"
+    $Script:RunnerPs1 = Join-Path $Script:ScriptDir "run-dsh-web.ps1"
+    if ($Script:ServiceMode) {
+        $webCmd = "set `"DSH_HOME=$env:USERPROFILE\.dsh`"`nset `"USERPROFILE=$env:USERPROFILE`""
+        if ($Script:Debug) {
+            $webCmd += "`n`"$($Script:NodePath)`" `"$($Script:DshCli)`" web --patch `"%~dp0service-directory-picker-browse.yml`" --port $($Script:Port) --host $($Script:BindHost)"
+        } else {
+            $webCmd += "`n`"$($Script:NodePath)`" `"$($Script:DshCli)`" web --patch `"%~dp0service-directory-picker-browse.yml`" --port $($Script:Port) --host $($Script:BindHost)"
+        }
+    } else {
+        $webCmd = "`"$($Script:NodePath)`" `"$($Script:DshCli)`" web --port $($Script:Port) --host $($Script:BindHost)"
+    }
+    $lines = @(
+        "@echo off",
+        $webCmd
+    )
+    Set-Content -LiteralPath $Script:Runner -Value $lines -Encoding ASCII
+    $vbsLines = @(
+        'Set fso = CreateObject("Scripting.FileSystemObject")',
+        'Set sh = CreateObject("WScript.Shell")',
+        'dir = fso.GetParentFolderName(WScript.ScriptFullName)',
+        'sh.Run "cmd /c """ & dir & "\run-dsh-web.cmd""", 0, True'
+    )
+    Set-Content -LiteralPath $Script:RunnerVbs -Value $vbsLines -Encoding ASCII
+    $ps1Lines = @(
+        '$runner = Join-Path $PSScriptRoot "run-dsh-web.cmd"',
+        'Start-Process -FilePath $runner -WindowStyle Hidden -Wait'
+    )
+    Set-Content -LiteralPath $Script:RunnerPs1 -Value $ps1Lines -Encoding ASCII
+}
+
 function Install-Service {
     Resolve-Runtime
     if (Get-SvcExists) {
         Write-Info (msg srvc_exists $Script:SvcName)
     } else {
         Write-Info (msg srvc_install $Script:Port)
-        $taskCmd = "cmd /c set \`"DSH_HOME=$env:USERPROFILE\.dsh\`" && \`"$($Script:NodePath)\`" \`"$($Script:DshCli)\`" web --port $($Script:Port) --host $($Script:BindHost)"
-        schtasks.exe /create /tn $Script:SvcName /tr $taskCmd /sc onstart /ru SYSTEM /rl highest /f
-        if ($LASTEXITCODE -ne 0) { Write-Fail (msg srvc_install_fail $Script:SvcName); exit 1 }
-        schtasks.exe /run /tn $Script:SvcName | Out-Null
     }
+    # Stop any running instance so the forced re-create below takes effect cleanly.
+    schtasks.exe /end /tn $Script:SvcName | Out-Null
+    # Re-create with /f every time so a changed command is refreshed on re-install.
+    # Two run modes:
+    #   --service: task runs as SYSTEM in session 0, where the native OS folder
+    #     dialog (IFileOpenDialog) cannot be shown, so the browse directory
+    #     picker is pinned via --patch. USERPROFILE is baked into the wrapper.
+    #   default (interactive): task runs with /it in the logged-on user's session
+    #     and the native folder dialog just works (no --patch needed).
+    # schtasks caps the /tr value at 261 chars, so register a short run wrapper
+    # (run-dsh-web.cmd) that carries the real command. Non-debug mode calls `dsh
+    # web` from PATH; debug mode pins the script-dir nodejs. --patch is a dsh
+    # launcher flag and must come right after `web`, before the inner app flags.
+Generate-Launchers
+    if ($Script:ServiceMode) {
+            $taskCmd = "cmd /c \`"\`"$($Script:Runner)\`" --port $($Script:Port)\`""
+        schtasks.exe /create /tn $Script:SvcName /tr $taskCmd /sc onstart /ru SYSTEM /rl highest /f
+    } else {
+        # Interactive mode: launch via a hidden wscript wrapper so no cmd window
+        # pops up in the user's session. VBScript is an on-demand feature since
+        # Windows 11 24H2, so probe it and fall back to a hidden PowerShell
+        # launcher when the feature is not installed.
+        $probeVbs = Join-Path $env:TEMP "dsh_vbs_probe.vbs"
+        Set-Content -LiteralPath $probeVbs -Value 'WScript.Echo "OK"' -Encoding ASCII
+        $vbOk = $false
+        try {
+            $out = cscript.exe //nologo $probeVbs 2>$null
+            if (($out -join "`n").Trim() -eq "OK") { $vbOk = $true }
+        } catch { $vbOk = $false }
+        Remove-Item -LiteralPath $probeVbs -Force -ErrorAction SilentlyContinue
+        if ($vbOk) {
+            $taskCmd = "wscript.exe \`"$($Script:RunnerVbs)\`" --port $($Script:Port)"
+        } else {
+            $taskCmd = "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \`"$($Script:RunnerPs1)\`" --port $($Script:Port)"
+        }
+        schtasks.exe /create /tn $Script:SvcName /tr $taskCmd /sc onstart /ru $env:USERNAME /it /rl highest /f
+    }
+    if ($LASTEXITCODE -ne 0) { Write-Fail (msg srvc_install_fail $Script:SvcName); exit 1 }
+    schtasks.exe /run /tn $Script:SvcName | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Fail (msg srvc_install_fail $Script:SvcName); exit 1 }
+    for ($i = 0; $i -lt 10; $i++) {
+        if (Get-SvcRunning) { break }
+        Start-Sleep -Milliseconds 500
+    }
+    if (-not (Get-SvcRunning)) { Write-Fail (msg srvc_install_fail $Script:SvcName); exit 1 }
     Write-Ok (msg srvc_installed $Script:SvcName)
 }
 
@@ -223,6 +326,7 @@ function Uninstall-Service {
     if (Get-SvcRunning) { schtasks.exe /end /tn $Script:SvcName | Out-Null }
     schtasks.exe /delete /tn $Script:SvcName /f
     if ($LASTEXITCODE -ne 0) { Write-Fail (msg srvc_uninstall_fail); exit 1 }
+    Stop-DshWebProcess
     Write-Ok (msg srvc_uninstalled)
 }
 
@@ -233,6 +337,21 @@ function Show-Status {
 
 function Start-ServiceX {
     if (-not (Get-SvcExists)) { Write-Fail (msg srvc_not_installed); exit 1 }
+    # Derive the installed mode from the task itself, then make sure the runtime
+    # launcher trio exists (normally created at install; regenerate if lost so the
+    # task does not fail on a missing file).
+    $t = Get-ScheduledTask -TaskName $Script:SvcName
+    $Script:ServiceMode = ($t.Principal.UserId -match "SYSTEM")
+    # Preserve debug mode when a generated launcher must be recreated.
+    $launchers = @(
+        (Join-Path $Script:ScriptDir "run-dsh-web.cmd"),
+        (Join-Path $Script:ScriptDir "run-dsh-web.vbs"),
+        (Join-Path $Script:ScriptDir "run-dsh-web.ps1")
+    )
+    if (($launchers | Where-Object { -not (Test-Path -LiteralPath $_) }).Count -gt 0) {
+        Resolve-Runtime
+        Generate-Launchers
+    }
     Write-Info (msg srvc_starting)
     schtasks.exe /run /tn $Script:SvcName | Out-Null
     for ($i = 0; $i -lt 10; $i++) {
@@ -253,6 +372,7 @@ function Stop-ServiceX {
             Start-Sleep -Milliseconds 500
         }
     }
+    Stop-DshWebProcess
     Write-Ok (msg srvc_stopped_ok)
 }
 

@@ -99,7 +99,7 @@ for ($i = 0; $i -lt $args.Count; $i++) {
 # ---------- 帮助 ----------
 function Show-Usage {
     Write-Host (msg sh_usage "powershell -ExecutionPolicy Bypass -File start.ps1")
-    Write-Host "  --port <port>    dsh service port (default: $($Script:DefaultPort))"
+    Write-Host (msg sh_usage_port $Script:DefaultPort)
     Write-Host (msg sh_usage_debug)
     Write-Host (msg sh_usage_help)
     exit 0
@@ -122,12 +122,13 @@ function Ensure-Toolchain {
         return
     }
     Write-Info (msg sh_setup_run)
+    $LASTEXITCODE = 0
     if ($ArgDebug) {
         & (Join-Path $Script:ScriptDir "setup.ps1") -Debug
     } else {
         & (Join-Path $Script:ScriptDir "setup.ps1")
     }
-    if ($LASTEXITCODE -ne 0) { Write-Fail (msg sh_setup_fail); exit 1 }
+    if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { Write-Fail (msg sh_setup_fail); exit 1 }
 }
 
 # ---------- 2) 解析 dsh 服务端口 ----------
@@ -174,11 +175,13 @@ function Start-DshService {
     $svcScript = Join-Path $Script:ScriptDir "server\server-service.ps1"
     if (Test-Path $svcScript) {
         $installed = [bool](Get-ScheduledTask -TaskName $Script:SvcName -ErrorAction SilentlyContinue)
-        if ($installed) {
-            & $svcScript start 2>$null | Out-Null
+        $LASTEXITCODE = 0
+        if ($installed -and -not $ArgPort) {
+            & $svcScript --port $Script:Port start 2>$null | Out-Null
         } else {
-            & $svcScript install 2>$null | Out-Null
+            & $svcScript --port $Script:Port install 2>$null | Out-Null
         }
+        if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { Write-Warn (msg sh_service_fail "http://localhost:$($Script:Port)"); return $false }
     }
     Write-Info (msg sh_service_wait)
     for ($i = 0; $i -lt 30; $i++) {

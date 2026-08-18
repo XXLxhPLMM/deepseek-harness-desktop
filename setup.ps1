@@ -247,6 +247,7 @@ function Install-Node-Direct {
     # 提示: 下载 <url> ...
     Write-Info (msg downloading $distUrl)
     try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         Invoke-WebRequest -Uri $distUrl -OutFile $zipPath -UseBasicParsing
     } catch {
         # 提示: 下载失败: <错误信息>
@@ -384,7 +385,13 @@ function Ensure-NpmMirror {
     }
 }
 
-# ---------- 配置环境变量 (Windows 用户 PATH) ----------
+# ---------- 配置环境变量 (Windows 系统 PATH, 需管理员权限) ----------
+function Test-Admin {
+    $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $p  = New-Object System.Security.Principal.WindowsPrincipal($id)
+    return $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
 function Set-NodeEnv {
     if ($ArgDryRun) {
         # 提示: --dry-run 模式，跳过安装
@@ -394,17 +401,32 @@ function Set-NodeEnv {
     # 提示: 写入环境变量配置...
     Write-Info (msg env_writing)
 
-    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
     $installDir = $Script:InstallDir
 
-    if ($userPath -and $userPath.Split(";") -contains $installDir) {
-        # 提示: Windows 用户 PATH 已包含 <dir>，跳过
+    if (-not (Test-Admin)) {
+        # 提示: 写入系统 PATH 需要管理员权限, 仅更新当前会话
+        Write-Warn (msg env_no_admin $installDir)
+        Write-Info (msg noenv_manual $installDir)
+        $env:Path = "$installDir;$env:Path"
+        # 提示: 当前会话 PATH 已更新
+        Write-Ok (msg env_session_ok "$installDir;$env:Path")
+        return
+    }
+
+    $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+    if ($machinePath -and $machinePath.Split(";") -contains $installDir) {
+        # 提示: Windows 系统 PATH 已包含 <dir>，跳过
         Write-Info (msg winpath_already $installDir)
     } else {
-        $newPath = if ([string]::IsNullOrEmpty($userPath)) { $installDir } else { "$installDir;$userPath" }
-        [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
-        # 提示: 已添加 <dir> 到 Windows 用户 PATH
-        Write-Ok (msg winpath_updated $installDir)
+        $newPath = if ([string]::IsNullOrEmpty($machinePath)) { $installDir } else { "$installDir;$machinePath" }
+        try {
+            [Environment]::SetEnvironmentVariable("Path", $newPath, "Machine")
+            # 提示: 已添加 <dir> 到 Windows 系统 PATH
+            Write-Ok (msg winpath_updated $installDir)
+        } catch {
+            # 提示: 更新 Windows 系统 PATH 失败...
+            Write-Warn (msg winpath_fail $installDir)
+        }
     }
 
     $env:Path = "$installDir;$env:Path"
@@ -441,6 +463,52 @@ function Remove-NodeFromPath {
     }
 }
 
+# ---------- 迁移用户级 node/nvm 目录到系统级 PATH (需管理员) ----------
+function Move-UserNodeToSystem {
+    # 让 SYSTEM 账户/开机服务也能找到 node/nvm: 非 debug + 非 dry-run + 非 --no-env
+    # + 管理员权限时, 把用户级 PATH 中的 node/nvm 目录移到系统级 (并从用户级删除)
+    if ($ArgDebug -or $ArgDryRun -or $ArgNoEnv -or (-not (Test-Admin))) { return }
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    if ([string]::IsNullOrEmpty($userPath)) { return }
+    $userItems = @($userPath -split ";" | Where-Object { $_ })
+    $machineItems = @([Environment]::GetEnvironmentVariable("Path", "Machine") -split ";" | Where-Object { $_ })
+
+    foreach ($cmd in @("node", "nvm")) {
+        $g = Get-Command $cmd -ErrorAction SilentlyContinue
+        if (-not $g -or [string]::IsNullOrEmpty($g.Source)) { continue }
+        $dir = Split-Path -Parent $g.Source
+        if ([string]::IsNullOrEmpty($dir)) { continue }
+
+        if ($machineItems -contains $dir) {
+            # 系统级已有该目录: 仅清理用户级重复项
+            if ($userItems -contains $dir) {
+                $userItems = @($userItems | Where-Object { $_ -ine $dir })
+                Set-UserPath $userItems
+                Write-Info (msg env_promote_clean $dir)
+            }
+            continue
+        }
+        if ($userItems -contains $dir) {
+            try {
+                $newMachine = if ($machineItems.Count -eq 0) { $dir } else { "$dir;$([Environment]::GetEnvironmentVariable("Path", "Machine"))" }
+                [Environment]::SetEnvironmentVariable("Path", $newMachine, "Machine")
+                $machineItems = @($newMachine -split ";" | Where-Object { $_ })
+                $userItems = @($userItems | Where-Object { $_ -ine $dir })
+                Set-UserPath $userItems
+                Write-Ok (msg env_promoted $dir)
+            } catch {
+                Write-Warn (msg env_promote_fail $dir)
+            }
+        }
+    }
+}
+
+# ---------- 写用户级 PATH (空则删除该变量) ----------
+function Set-UserPath([string[]]$items) {
+    $nu = @($items | Where-Object { $_ }) -join ";"
+    if ($nu) { [Environment]::SetEnvironmentVariable("Path", $nu, "User") } else { [Environment]::SetEnvironmentVariable("Path", $null, "User") }
+}
+
 # ---------- 主流程 ----------
 function Main {
     # 提示: === 环境检测与安装 ===
@@ -462,6 +530,7 @@ function Main {
 
     # ---- 第 2 级: node (已就绪则跳过, 拒绝重复安装) ----
     $nodeInstalled = $false
+    $nodeMethod = "direct"
     if (-not (Test-Node)) {
         if ($ArgDryRun) {
             # 提示: --dry-run 模式，跳过安装
@@ -477,7 +546,9 @@ function Main {
             $nodeDone = Install-Node-Direct
         } elseif ($nvmFound) {
             $nodeDone = Install-Node-With-Nvm
-            if (-not $nodeDone) {
+            if ($nodeDone) {
+                $nodeMethod = "nvm"
+            } else {
                 # 提示: nvm 安装失败，回退到官方下载方式...
                 Write-Warn (msg nvm_fail_fallback)
                 $nodeDone = Install-Node-Direct
@@ -496,7 +567,10 @@ function Main {
         $nodeInstalled = $true
     }
 
-    # ---- 第 2.5 级: npm 淘宝镜像 + nrm 全局安装 (需 node 就绪) ----
+    # ---- 第 2.5 级: 迁移用户级 node/nvm PATH 到系统级 (SYSTEM 服务可见) ----
+    Move-UserNodeToSystem
+
+    # ---- 第 2.6 级: npm 淘宝镜像 + nrm 全局安装 (需 node 就绪) ----
     Ensure-NpmMirror
 
     # ---- 第 3 级: dsh (已就绪则跳过, 拒绝重复安装) ----
@@ -513,17 +587,18 @@ function Main {
 
     # ---- 环境变量 (仅当我们自己安装了 node; 系统已有 node 则不碰) ----
     if ($nodeInstalled) {
-        if ($ArgNoEnv -or $ArgDebug) {
-            if ($ArgDebug) {
-                # 提示: 调试模式: 仅更新当前会话 PATH，不写用户持久化 PATH
-                Write-Info (msg debug_session_only)
-                $env:Path = "$Script:InstallDir;$env:Path"
-            } else {
-                # 提示: --no-env 已指定，跳过环境变量配置
-                Write-Info (msg noenv_skip)
-                # 提示: 请手动将 <dir> 加入 PATH
-                Write-Warn (msg noenv_manual $Script:InstallDir)
-            }
+        if ($ArgDebug) {
+            # 提示: 调试模式: 仅更新当前会话 PATH，不写用户持久化 PATH
+            Write-Info (msg debug_session_only)
+            $env:Path = "$Script:InstallDir;$env:Path"
+        } elseif ($ArgNoEnv) {
+            # 提示: --no-env 已指定，跳过环境变量配置
+            Write-Info (msg noenv_skip)
+            # 提示: 请手动将 <dir> 加入 PATH
+            Write-Warn (msg noenv_manual $Script:InstallDir)
+        } elseif ($nodeMethod -eq "nvm") {
+            # 提示: node 经 nvm 安装, nvm 已管理 PATH, 不再写 INSTALL_DIR (目录并未创建)
+            Write-Info (msg env_nvm_skip)
         } else {
             Set-NodeEnv
         }

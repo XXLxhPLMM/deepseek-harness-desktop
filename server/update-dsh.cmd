@@ -13,7 +13,7 @@ rem    update-dsh.cmd --help         show help
 rem    update-dsh.cmd /nopause       exit without pausing (for double-click)
 rem
 rem  NOTE: keep this file pure ASCII (GBK/UTF-8 multibyte comments corrupt cmd
-rem  parsing), keep CRLF line endings, and never write "if(" without a space.
+rem  parsing), keep CRLF line endings, and always space PowerShell if keywords.
 rem ============================================================================
 setlocal EnableExtensions EnableDelayedExpansion
 
@@ -127,7 +127,7 @@ for /f "usebackq delims=" %%v in (`cmd /c npm view "%DSH_PKG%" version 2^>nul`) 
 if not defined LATEST_VER set "LATEST_VER=unknown"
 call :msg ud_latest "%LATEST_VER%"
 echo [INFO] !M!
-if /i "%CUR_VER%"=="%LATEST_VER%" (
+if /i not "%CUR_VER%"=="unknown" if /i not "%LATEST_VER%"=="unknown" if /i "%CUR_VER%"=="%LATEST_VER%" (
     call :msg ud_up_to_date
     echo [OK]    !M!
 )
@@ -157,4 +157,4 @@ call :msg ud_usage_dryrun & echo !M!
 call :msg ud_usage_debug & echo !M!
 call :msg ud_usage_help & echo !M!
 call :msg ud_usage_nopause & echo !M!
-exit /b 0
+exit /b 0

@@ -39,7 +39,7 @@
   - macOS/Linux 读 `$LANG`/`LC_ALL`。
   - 前缀匹配：`zh-TW/HK/MO`→`zh-TW`（繁体），`zh`→`zh`（简体），`ja/ko/fr/de/es/en`→对应，其余→`zh`。
   - `en` 需显式匹配，否则英文系统会落入默认中文。
-- 现有语言包：`zh`（简体）`zh-TW`（繁体/台湾）`en` `ja` `ko` `fr` `de` `es`（各 139 个键，键名必须完全对齐）。
+- 现有语言包：`zh`（简体）`zh-TW`（繁体/台湾）`en` `ja` `ko` `fr` `de` `es`（各 151 个键，键名必须完全对齐）。
 - 消息查找方式：
   - sh / ps1：`msg <键> [参数…]`；cmd：`call :msg <键> <参数1> <参数2>`，结果存 `!M!`。
   - 动态内容用 `{1}`、`{2}` 占位符，按传入顺序替换。
@@ -70,7 +70,7 @@
 | bash | `source setup.sh --debug` |
 | PowerShell | `.\setup.ps1 -Debug`（`$env:` 天然保留） |
 
-- **setup.cmd**：`setlocal` 下所有完成路径经 `goto :finish`；`:finish` 用 `endlocal & set "PATH=%KEEP_PATH%" & set "npm_config_registry=%KEEP_REG%" & set "npm_config_prefix=%KEEP_PFX%"` 传出关键变量（`%KEEP_*%` 在整行解析期、endlocal 前展开）。**不要在 endlocal 后用 `if defined` 判断**（endlocal 已恢复变量）。
+- **setup.cmd**：`setlocal` 下所有完成路径经 `goto :finish`；`:finish` 用 `endlocal & set "PATH=%KEEP_PATH%" & set "npm_config_registry=%KEEP_REG%" & set "npm_config_prefix=%KEEP_PFX%"` 传出关键变量（`%KEEP_*%` 在整行解析期、endlocal 前展开）。**不要在 endlocal 后用 `if defined` 判断**（endlocal 已恢复变量）。**`:done` 末尾必须 `goto :finish`**：子程序区紧跟 `:done`，若无 `goto :finish`，当 node 已装（`NODE_INSTALLED=0` 跳过 env 块）时会**落穿**执行 `:configure_env`，把脚本目录 nodejs 误写进系统 PATH 并 `exit /b 0` 终止脚本（本机曾实测中招）。
 - **setup.sh**：检测 `[[ "${BASH_SOURCE[0]}" != "$0" ]]` 进入激活模式；激活模式**不启用 `set -e`**（避免未预期错误退出用户 shell），只 `set -u -o pipefail`；所有 `exit N` 在激活模式需经 `return N`/`setup_exit` 传播，顶层 `main "$@"` 捕获 `rc=$?` 后 `eval "$_SETUP_SAVED_SET"` 恢复调用者 shell 选项、`unset -f` 清理脚本函数、`return $rc`。`setup_exit` 必须定义在参数解析 while 之前。
 - **setup.ps1**：`$env:` 修改天然保留；脚本内 `exit N` 被 `&` 调用时只设 `$LASTEXITCODE` 不终止宿主（start.ps1 依赖），成功路径 Main 自然返回即可激活。
 - 环境变量部分需**无条件前置脚本目录 node**（即使本次未新装 node）：脚本目录 node 已存在时 `NODE_INSTALLED` 为假，否则 `remove_node_from_path` 清掉系统 node 后激活会话将无 node（sh `elif` / ps1 `elseif` 分支处理）。
@@ -81,6 +81,8 @@
   - `setup.sh`: `VERSION="v22.23.2"`
   - `setup.ps1`: `$Script:Version = "22.23.2"`（nvm 用无 v 前缀）+ `$Script:VVersion = "v22.23.2"`（官方下载用 v 前缀）
 - **`setup.ps1` 必须是 UTF-8 带 BOM**，否则 Windows PowerShell 5.1 会按 ANSI/GBK 解析中文注释/字符串导致语法错误。改写后需检查文件头 `EF BB BF`。
+- **非 debug 模式把 node 安装目录写入系统级（Machine）PATH**（让 SYSTEM 账户/开机服务也能用），需要管理员权限；无管理员权限时仅警告并更新当前会话，不写用户 PATH。调试模式仍只更新当前会话。**node 经 nvm 安装时跳过 PATH 写入**（nvm 已管理自身 PATH，脚本目录 `nodejs/` 并未创建，写入会产生失效条目）。
+- **用户级 PATH 自动迁移**（三脚本一致，仅 Windows）：非 debug + 非 dry-run + 非 `--no-env` + 管理员权限时，若 node/nvm 目录只存在于用户级（User）PATH，则把该目录**移到系统级（Machine）PATH 并从用户级删除**（`env_promoted`）；若系统级已含该目录则仅清理用户级重复项（`env_promote_clean`）；无管理员权限自动跳过（保持现状）。调试模式不做迁移。sh 的 MINGW 分支与 ps1 用 `[Environment]::SetEnvironmentVariable(..., 'Machine'/'User')` 实现；setup.cmd 用 `reg add HKLM\...\Session Manager\Environment` + `reg add HKCU\Environment`（纯 cmd，不依赖 PowerShell），用户级为空时 `reg delete`。**注意 cmd 字符串替换里 `%D%`（解析期）与 `!USER_PATH!`（延迟）的区分**：`%D%` 在子程序按行解析时已设置，安全；PATH 值中的 `%` 需经 `!VAR!` 延迟展开携带，避免解析期被当作变量展开而损坏。
 - nvm-windows 的 `nvm use` 可能需要管理员权限；脚本会提示并回退官方下载。
 - 验证方式：
   - `bash -n setup.sh`（语法）

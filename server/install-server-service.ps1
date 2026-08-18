@@ -20,9 +20,13 @@ foreach ($a in $args) {
 }
 
 if ($isHelp) {
+    $LASTEXITCODE = 0
     & $Target -Help
-    exit $LASTEXITCODE
+    if ($LASTEXITCODE) { exit $LASTEXITCODE }
+    exit 0
 }
 
+$LASTEXITCODE = 0
 & $Target install @args
-exit $LASTEXITCODE
+if ($LASTEXITCODE) { exit $LASTEXITCODE }
+exit 0
