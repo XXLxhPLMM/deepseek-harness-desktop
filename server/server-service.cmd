@@ -403,16 +403,16 @@ set "RUNNER_PS1=%SCRIPT_DIR%run-dsh-web.ps1"
 if "%SERVICE_MODE%"=="1" (
     >> "%RUNNER%" echo set "DSH_HOME=%USERPROFILE%\.dsh"
     >> "%RUNNER%" echo set "USERPROFILE=%USERPROFILE%"
-    if "%DEBUG_MODE%"=="1" (
-        >> "%RUNNER%" echo "%NODE_EXE%" "%DSH_CLI%" web --patch "%%~dp0service-directory-picker-browse.yml" --port %PORT% --host %HOST%
-    ) else (
+    if /I "!DSH_CLI:~-4!"==".cmd" (
         >> "%RUNNER%" echo "%DSH_CLI%" web --patch "%%~dp0service-directory-picker-browse.yml" --port %PORT% --host %HOST%
+    ) else (
+        >> "%RUNNER%" echo "%NODE_EXE%" "%DSH_CLI%" web --patch "%%~dp0service-directory-picker-browse.yml" --port %PORT% --host %HOST%
     )
 ) else (
-    if "%DEBUG_MODE%"=="1" (
-        >> "%RUNNER%" echo "%NODE_EXE%" "%DSH_CLI%" web --port %PORT% --host %HOST%
-    ) else (
+    if /I "!DSH_CLI:~-4!"==".cmd" (
         >> "%RUNNER%" echo "%DSH_CLI%" web --port %PORT% --host %HOST%
+    ) else (
+        >> "%RUNNER%" echo "%NODE_EXE%" "%DSH_CLI%" web --port %PORT% --host %HOST%
     )
 )
 rem VBS launcher self-locates its own directory via WScript.ScriptFullName; the
