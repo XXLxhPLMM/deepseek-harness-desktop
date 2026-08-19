@@ -233,8 +233,9 @@ start_service() {
         fi
     fi
     info "$(msg sh_service_wait)"
+    info "$(msg sh_first_slow)"
     local i
-    for i in $(seq 1 30); do
+    for i in $(seq 1 60); do
         if service_up; then return 0; fi
         sleep 1
     done

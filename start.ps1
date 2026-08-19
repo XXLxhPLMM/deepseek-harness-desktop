@@ -184,7 +184,8 @@ function Start-DshService {
         if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { Write-Warn (msg sh_service_fail "http://localhost:$($Script:Port)"); return $false }
     }
     Write-Info (msg sh_service_wait)
-    for ($i = 0; $i -lt 30; $i++) {
+    Write-Info (msg sh_first_slow)
+    for ($i = 0; $i -lt 60; $i++) {
         if (Test-PortUp) { return $true }
         Start-Sleep -Seconds 1
     }
